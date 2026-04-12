@@ -57,33 +57,32 @@ export default function SettingsPage() {
           leaveDayValue: parsed.leaveDayValue || 7,
           holidayRate: parsed.holidayRate || 100
         });
-      } catch (e) { console.error("Erreur de lecture du stockage", e); }
+      } catch (e) { console.error("Erreur lecture stockage", e); }
     }
   }, []);
 
   const handleSave = async () => {
-    // 1. Sauvegarde locale
     const now = new Date().toISOString();
+
+    // 1. Sauvegarde locale immédiate avec timestamp
     localStorage.setItem('lingo_settings', JSON.stringify(settings));
     localStorage.setItem('lingo_updated_at', now);
-    
-    // 2. Sauvegarde Cloud (Supabase)
+
+    // 2. Push cloud en arrière-plan (sans bloquer l'UI)
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        // On récupère aussi le planning actuel pour envoyer un profil complet
         const localPlanning = JSON.parse(localStorage.getItem('lingo_planning') || '[]');
-        
         await supabase.from('user_profiles').upsert({
           id: session.user.id,
           settings_data: settings,
           planning_data: localPlanning,
-          updated_at: now
+          updated_at: now,
         });
-        console.log("Synchronisation Cloud réussie");
       }
     } catch (error) {
       console.error("Erreur synchro cloud:", error);
+      // Pas grave : le local est sauvegardé, la sync se fera au prochain chargement
     }
 
     setIsSaved(true);
@@ -91,8 +90,7 @@ export default function SettingsPage() {
   };
 
   const addNightShift = () => {
-    const newShift: NightShift = { id: Date.now().toString(), start: "00:00", end: "00:00", rate: 0 };
-    setSettings({ ...settings, nightShifts: [...settings.nightShifts, newShift] });
+    setSettings({ ...settings, nightShifts: [...settings.nightShifts, { id: Date.now().toString(), start: "00:00", end: "00:00", rate: 0 }] });
   };
 
   const removeNightShift = (id: string) => {
@@ -126,17 +124,18 @@ export default function SettingsPage() {
       </div>
 
       <div className="max-w-4xl mx-auto p-4 space-y-4">
+
         {/* Base Contrat */}
         <div className="bg-[#111] border border-white/10 p-6 rounded-3xl shadow-xl">
           <h2 className="text-lg font-medium mb-6 flex items-center gap-2 text-left">
             <FileText className="text-blue-500" size={18} /> Base Contrat
           </h2>
           <div className="space-y-4">
-            <InputGroup label="Ton Prénom" value={settings.userName} type="text" onChange={(v) => setSettings({...settings, userName: v})} />
-            <InputGroup label="Taux Horaire Brut (€/h)" value={settings.hourlyRate} type="number" onChange={(v) => setSettings({...settings, hourlyRate: parseFloat(v) || 0})} />
+            <InputGroup label="Ton Prénom" value={settings.userName} type="text" onChange={v => setSettings({ ...settings, userName: v })} />
+            <InputGroup label="Taux Horaire Brut (€/h)" value={settings.hourlyRate} type="number" onChange={v => setSettings({ ...settings, hourlyRate: parseFloat(v) || 0 })} />
             <div className="grid grid-cols-2 gap-4">
-              <InputGroup label="Heures mensuelles" value={settings.contractHours} type="number" onChange={(v) => setSettings({...settings, contractHours: parseFloat(v) || 0})} />
-              <InputGroup label="Panier Repas (€)" value={settings.mealAllowance} type="number" onChange={(v) => setSettings({...settings, mealAllowance: parseFloat(v) || 0})} />
+              <InputGroup label="Heures mensuelles" value={settings.contractHours} type="number" onChange={v => setSettings({ ...settings, contractHours: parseFloat(v) || 0 })} />
+              <InputGroup label="Panier Repas (€)" value={settings.mealAllowance} type="number" onChange={v => setSettings({ ...settings, mealAllowance: parseFloat(v) || 0 })} />
             </div>
           </div>
         </div>
@@ -148,8 +147,8 @@ export default function SettingsPage() {
           </h2>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <InputGroup label="Jours annuels" value={settings.annualLeave} type="number" onChange={(v) => setSettings({...settings, annualLeave: parseInt(v) || 0})} />
-              <InputGroup label="Heures / jour" value={settings.leaveDayValue} type="number" onChange={(v) => setSettings({...settings, leaveDayValue: parseFloat(v) || 0})} />
+              <InputGroup label="Jours annuels" value={settings.annualLeave} type="number" onChange={v => setSettings({ ...settings, annualLeave: parseInt(v) || 0 })} />
+              <InputGroup label="Heures / jour" value={settings.leaveDayValue} type="number" onChange={v => setSettings({ ...settings, leaveDayValue: parseFloat(v) || 0 })} />
             </div>
             <div className="p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl">
               <p className="text-[10px] text-orange-400/70 italic">💡 Heures payées par jour de CP posé</p>
@@ -163,11 +162,11 @@ export default function SettingsPage() {
             <Gift className="text-pink-500" size={18} /> Jours Fériés
           </h2>
           <div className="space-y-4">
-            <InputGroup label="Majoration (%)" value={settings.holidayRate} type="number" onChange={(v) => setSettings({...settings, holidayRate: parseFloat(v) || 0})} />
+            <InputGroup label="Majoration (%)" value={settings.holidayRate} type="number" onChange={v => setSettings({ ...settings, holidayRate: parseFloat(v) || 0 })} />
             <div className="p-4 bg-pink-500/5 border border-pink-500/20 rounded-xl">
               <p className="text-[10px] text-pink-400/70 italic">
-                💰 100% = Paiement double<br/>
-                💰 50% = Paiement à 150%<br/>
+                💰 100% = Paiement double<br />
+                💰 50% = Paiement à 150%<br />
                 💰 Le bonus se cumule avec les primes nuit !
               </p>
             </div>
@@ -181,13 +180,13 @@ export default function SettingsPage() {
           </h2>
           <div className="space-y-4">
             <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl">
-              <InputGroup label="Objectif Net Mensuel (€)" value={settings.targetNet} type="number" onChange={(v) => setSettings({...settings, targetNet: parseFloat(v) || 0})} />
+              <InputGroup label="Objectif Net Mensuel (€)" value={settings.targetNet} type="number" onChange={v => setSettings({ ...settings, targetNet: parseFloat(v) || 0 })} />
               <p className="mt-2 text-[10px] text-blue-400/70 italic">Pour la barre de progression</p>
             </div>
-            <InputGroup label="Cotisations sociales (%)" value={settings.socialChargesRate} type="number" onChange={(v) => setSettings({...settings, socialChargesRate: parseFloat(v) || 0})} />
+            <InputGroup label="Cotisations sociales (%)" value={settings.socialChargesRate} type="number" onChange={v => setSettings({ ...settings, socialChargesRate: parseFloat(v) || 0 })} />
             <div className="grid grid-cols-2 gap-4">
-              <InputGroup label="Mutuelle (€)" value={settings.fixedDeductions} type="number" onChange={(v) => setSettings({...settings, fixedDeductions: parseFloat(v) || 0})} />
-              <InputGroup label="Impôt source (%)" value={settings.taxRate} type="number" onChange={(v) => setSettings({...settings, taxRate: parseFloat(v) || 0})} />
+              <InputGroup label="Mutuelle (€)" value={settings.fixedDeductions} type="number" onChange={v => setSettings({ ...settings, fixedDeductions: parseFloat(v) || 0 })} />
+              <InputGroup label="Impôt source (%)" value={settings.taxRate} type="number" onChange={v => setSettings({ ...settings, taxRate: parseFloat(v) || 0 })} />
             </div>
           </div>
         </div>
@@ -203,16 +202,16 @@ export default function SettingsPage() {
             </button>
           </div>
           <div className="space-y-3">
-            {settings.nightShifts.map((shift) => (
+            {settings.nightShifts.map(shift => (
               <div key={shift.id} className="p-4 bg-[#0a0a0a] rounded-2xl border border-white/5">
                 <div className="flex justify-between items-center mb-3">
                   <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">Créneau</span>
                   <button onClick={() => removeNightShift(shift.id)} className="text-gray-600 active:text-red-500 active:scale-95 transition-all"><Trash2 size={14} /></button>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <InputGroup label="Début" value={shift.start} type="time" onChange={(v) => updateNightShift(shift.id, 'start', v)} />
-                  <InputGroup label="Fin" value={shift.end} type="time" onChange={(v) => updateNightShift(shift.id, 'end', v)} />
-                  <InputGroup label="+ %" value={shift.rate} type="number" onChange={(v) => updateNightShift(shift.id, 'rate', parseFloat(v) || 0)} />
+                  <InputGroup label="Début" value={shift.start} type="time" onChange={v => updateNightShift(shift.id, 'start', v)} />
+                  <InputGroup label="Fin" value={shift.end} type="time" onChange={v => updateNightShift(shift.id, 'end', v)} />
+                  <InputGroup label="+ %" value={shift.rate} type="number" onChange={v => updateNightShift(shift.id, 'rate', parseFloat(v) || 0)} />
                 </div>
               </div>
             ))}
@@ -229,7 +228,7 @@ export default function SettingsPage() {
             {showSynthesis ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </button>
           {showSynthesis && (
-            <div className="p-6 pt-0 space-y-4 animate-in slide-in-from-top duration-300">
+            <div className="p-6 pt-0 space-y-4">
               <div className="flex justify-between items-center pb-4 border-b border-white/5">
                 <span className="text-gray-400 text-sm">Salaire Brut Base</span>
                 <span className="text-lg font-bold text-white">{baseBrut.toLocaleString('fr-FR', { minimumFractionDigits: 2 })}€</span>
@@ -271,7 +270,7 @@ export default function SettingsPage() {
                   <span className="text-xs text-gray-300">Férié (+{settings.holidayRate}%)</span>
                   <span className="font-bold text-pink-400">{(settings.hourlyRate * (1 + settings.holidayRate / 100)).toFixed(2)}€/h</span>
                 </div>
-                {settings.nightShifts.map((shift) => (
+                {settings.nightShifts.map(shift => (
                   <div key={shift.id} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
                     <span className="text-xs text-gray-300">{shift.start}-{shift.end} (+{shift.rate}%)</span>
                     <span className="font-bold text-blue-400">{(settings.hourlyRate * (1 + shift.rate / 100)).toFixed(2)}€/h</span>
@@ -290,11 +289,12 @@ export default function SettingsPage() {
   );
 }
 
-function InputGroup({ label, value, type, onChange }: { label: string, value: string | number, type: string, onChange: (v: string) => void }) {
+function InputGroup({ label, value, type, onChange }: { label: string; value: string | number; type: string; onChange: (v: string) => void }) {
   return (
     <div className="space-y-2 text-left">
       <label className="text-[10px] uppercase font-bold text-gray-600 ml-1 tracking-wider">{label}</label>
-      <input type={type} value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#1a1a1a] border border-white/5 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white transition-all" />
+      <input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)}
+        className="w-full bg-[#1a1a1a] border border-white/5 rounded-xl px-4 py-3 outline-none focus:border-blue-500 text-sm text-white transition-all" />
     </div>
   );
 }

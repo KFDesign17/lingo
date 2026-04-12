@@ -2,27 +2,25 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-  ArrowLeft, ChevronLeft, ChevronRight, Plus, 
-  Clock, Moon, Coffee, Calendar as CalendarIcon, X, Save, Trash2, Umbrella, Heart, AlertCircle, XCircle, Gift, Menu
+import {
+  ArrowLeft, ChevronLeft, ChevronRight, Plus,
+  Clock, Coffee, X, Save, Trash2, Umbrella, Heart, AlertCircle, XCircle, Gift
 } from 'lucide-react';
-// Ajout de l'import Supabase
 import { supabase } from '@/utils/supabase';
 
 interface WorkSession { id: string; start: string; end: string; }
-
 interface WorkEntry {
-  date: string; 
+  date: string;
   sessions: WorkSession[];
   absenceType?: 'cp' | 'sick' | 'recovery' | 'unpaid' | null;
   isHoliday?: boolean;
 }
 
 const absenceLabels = {
-  cp:       { label: 'Congé Payé',    color: 'bg-orange-500/20 border-orange-500', icon: Umbrella,  textColor: 'text-orange-400' },
-  sick:     { label: 'Maladie',        color: 'bg-red-500/20 border-red-500',       icon: Heart,     textColor: 'text-red-400' },
-  recovery: { label: 'Récupération',   color: 'bg-blue-500/20 border-blue-500',     icon: Coffee,    textColor: 'text-blue-400' },
-  unpaid:   { label: 'Sans Solde',     color: 'bg-gray-500/20 border-gray-500',     icon: XCircle,   textColor: 'text-gray-400' }
+  cp:       { label: 'Congé Payé',   color: 'bg-orange-500/20 border-orange-500', icon: Umbrella, textColor: 'text-orange-400' },
+  sick:     { label: 'Maladie',       color: 'bg-red-500/20 border-red-500',       icon: Heart,    textColor: 'text-red-400' },
+  recovery: { label: 'Récupération',  color: 'bg-blue-500/20 border-blue-500',     icon: Coffee,   textColor: 'text-blue-400' },
+  unpaid:   { label: 'Sans Solde',    color: 'bg-gray-500/20 border-gray-500',     icon: XCircle,  textColor: 'text-gray-400' }
 };
 
 export default function PlanningPage() {
@@ -32,9 +30,10 @@ export default function PlanningPage() {
   const [mealAllowance, setMealAllowance] = useState(0);
   const [holidayRate, setHolidayRate] = useState(100);
   const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
-  const [showAbsenceModal, setShowAbsenceModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [dayType, setDayType] = useState<'work' | 'cp' | 'sick' | 'recovery' | 'unpaid'>('work');
   const [isHolidayChecked, setIsHolidayChecked] = useState(false);
+  const [tempSessions, setTempSessions] = useState<WorkSession[]>([]);
 
   useEffect(() => {
     const savedSettings = localStorage.getItem('lingo_settings');
@@ -46,98 +45,92 @@ export default function PlanningPage() {
     }
     if (savedPlanning) {
       try {
-        const parsedEntries: any[] = JSON.parse(savedPlanning);
-        setWorkEntries(parsedEntries.filter(e => e && (Array.isArray(e.sessions) || e.absenceType)));
-      } catch (e) { console.error("Erreur de formatage des données", e); }
+        const parsed: any[] = JSON.parse(savedPlanning);
+        setWorkEntries(parsed.filter(e => e && (Array.isArray(e.sessions) || e.absenceType)));
+      } catch (e) { console.error("Erreur formatage données", e); }
     }
     setIsInitialLoadDone(true);
   }, []);
 
+  // ─────────────────────────────────────────────────────────────
+  // SAUVEGARDE LOCALE + CLOUD à chaque modification du planning
+  // Le timestamp permet à la sync du dashboard de savoir
+  // que le local est plus récent que le cloud.
+  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (isInitialLoadDone) {
-      localStorage.setItem('lingo_planning', JSON.stringify(workEntries));
-      localStorage.setItem('lingo_updated_at', new Date().toISOString());
-    }
+    if (!isInitialLoadDone) return;
+
+    const now = new Date().toISOString();
+    localStorage.setItem('lingo_planning', JSON.stringify(workEntries));
+    localStorage.setItem('lingo_updated_at', now);
+
+    // Push cloud silencieux
+    const pushCloud = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const localSettings = JSON.parse(localStorage.getItem('lingo_settings') || 'null');
+          await supabase.from('user_profiles').upsert({
+            id: session.user.id,
+            planning_data: workEntries,
+            settings_data: localSettings,
+            updated_at: now,
+          });
+        }
+      } catch (err) {
+        console.error('Erreur sync planning cloud:', err);
+        // Pas grave — sera sync au prochain login
+      }
+    };
+    pushCloud();
   }, [workEntries, isInitialLoadDone]);
 
   const { days, startOffset, month, year } = getDaysInMonth(currentDate);
   const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
   function getDaysInMonth(date: Date) {
-    const year = date.getFullYear();
-    const month = date.getMonth();
+    const year = date.getFullYear(), month = date.getMonth();
     const firstDay = new Date(year, month, 1).getDay();
     const days = new Date(year, month + 1, 0).getDate();
-    const startOffset = firstDay === 0 ? 6 : firstDay - 1;
-    return { days, startOffset, month, year };
+    return { days, startOffset: firstDay === 0 ? 6 : firstDay - 1, month, year };
   }
 
   const currentDayEntry = workEntries.find(e => e.date === selectedDate);
-  const [tempSessions, setTempSessions] = useState<WorkSession[]>([]);
 
   useEffect(() => {
-    if (selectedDate) {
-      const entry = currentDayEntry;
-      if (entry?.absenceType) {
-        setDayType(entry.absenceType);
-        setTempSessions([]);
-        setIsHolidayChecked(false);
-      } else {
-        setDayType('work');
-        setTempSessions(entry?.sessions || [{ id: Date.now().toString(), start: "08:00", end: "17:00" }]);
-        setIsHolidayChecked(entry?.isHoliday || false);
-      }
+    if (!selectedDate) return;
+    const entry = currentDayEntry;
+    if (entry?.absenceType) {
+      setDayType(entry.absenceType);
+      setTempSessions([]);
+      setIsHolidayChecked(false);
+    } else {
+      setDayType('work');
+      setTempSessions(entry?.sessions || [{ id: Date.now().toString(), start: "08:00", end: "17:00" }]);
+      setIsHolidayChecked(entry?.isHoliday || false);
     }
-  }, [selectedDate, currentDayEntry]);
+  }, [selectedDate]);
 
   const addSession = () => setTempSessions([...tempSessions, { id: Date.now().toString(), start: "18:00", end: "22:00" }]);
-
-  const updateSession = (id: string, field: 'start' | 'end', value: string) => {
-    setTempSessions(tempSessions.map(s => s.id === id ? { ...s, [field]: value } : s));
-  };
-
+  const updateSession = (id: string, field: 'start' | 'end', value: string) => setTempSessions(tempSessions.map(s => s.id === id ? { ...s, [field]: value } : s));
   const removeSession = (id: string) => setTempSessions(tempSessions.filter(s => s.id !== id));
 
-  // --- FONCTION DE SAUVEGARDE MODIFIÉE POUR LE CLOUD ---
-  const handleSaveDay = async () => {
-    if (selectedDate) {
-      let updatedEntries;
-      if (dayType === 'work') {
-        if (tempSessions.length === 0) {
-          updatedEntries = workEntries.filter(e => e.date !== selectedDate);
-        } else {
-          updatedEntries = [...workEntries.filter(e => e.date !== selectedDate), { date: selectedDate, sessions: tempSessions, isHoliday: isHolidayChecked }];
-        }
+  const handleSaveDay = () => {
+    if (!selectedDate) return;
+    if (dayType === 'work') {
+      if (tempSessions.length === 0) {
+        setWorkEntries(prev => prev.filter(e => e.date !== selectedDate));
       } else {
-        updatedEntries = [...workEntries.filter(e => e.date !== selectedDate), { date: selectedDate, sessions: [], absenceType: dayType }];
+        setWorkEntries(prev => [...prev.filter(e => e.date !== selectedDate), { date: selectedDate, sessions: tempSessions, isHoliday: isHolidayChecked }]);
       }
-      
-      setWorkEntries(updatedEntries);
-
-      // Synchro Cloud immédiate
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const localSettings = JSON.parse(localStorage.getItem('lingo_settings') || '{}');
-          const now = new Date().toISOString();
-          
-          await supabase.from('user_profiles').upsert({
-            id: session.user.id,
-            planning_data: updatedEntries,
-            settings_data: localSettings,
-            updated_at: now
-          });
-        }
-      } catch (error) {
-        console.error("Erreur synchro planning:", error);
-      }
-
-      setSelectedDate(null);
-      setShowAbsenceModal(false);
+    } else {
+      setWorkEntries(prev => [...prev.filter(e => e.date !== selectedDate), { date: selectedDate, sessions: [], absenceType: dayType }]);
     }
+    setSelectedDate(null);
+    setShowModal(false);
   };
 
-  const handleDayClick = (dateStr: string) => { setSelectedDate(dateStr); setShowAbsenceModal(true); };
+  const handleDayClick = (dateStr: string) => { setSelectedDate(dateStr); setShowModal(true); };
 
   const entriesThisMonth = workEntries.filter(e => { const d = new Date(e.date); return d.getMonth() === month && d.getFullYear() === year; });
   const workDaysCount = entriesThisMonth.filter(e => !e.absenceType && e.sessions?.length > 0).length;
@@ -153,46 +146,48 @@ export default function PlanningPage() {
 
       <div className="sticky top-0 z-30 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 p-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <Link href="/" className="p-2 bg-[#1a1a1a] rounded-full hover:bg-white/10 active:scale-95 transition-all">
-            <ArrowLeft size={20} />
-          </Link>
+          <Link href="/" className="p-2 bg-[#1a1a1a] rounded-full hover:bg-white/10 active:scale-95 transition-all"><ArrowLeft size={20} /></Link>
           <h1 className="text-lg font-bold">Planning</h1>
-          <div className="w-10"></div>
+          <div className="w-10" />
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto p-4 space-y-6">
+
+        {/* Sélecteur mois */}
         <div className="flex items-center justify-center bg-[#111] border border-white/10 rounded-2xl p-1">
           <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="p-3 hover:bg-white/5 active:bg-white/10 rounded-xl transition-all"><ChevronLeft size={20} /></button>
           <div className="flex-1 px-4 py-2 text-center font-semibold">{monthNames[month]} {year}</div>
           <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="p-3 hover:bg-white/5 active:bg-white/10 rounded-xl transition-all"><ChevronRight size={20} /></button>
         </div>
 
+        {/* Calendrier */}
         <div className="grid grid-cols-7 gap-1 bg-white/5 border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
-          {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((day, idx) => (
-            <div key={idx} className="bg-[#111] p-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest">{day}</div>
+          {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
+            <div key={i} className="bg-[#111] p-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-widest">{d}</div>
           ))}
-          {[...Array(startOffset)].map((_, i) => <div key={`e-${i}`} className="bg-[#0d0d0d] min-h-[60px] opacity-20"></div>)}
+          {[...Array(startOffset)].map((_, i) => <div key={`e-${i}`} className="bg-[#0d0d0d] min-h-[60px] opacity-20" />)}
           {[...Array(days)].map((_, i) => {
             const day = i + 1;
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const entry = workEntries.find(e => e.date === dateStr);
             const isToday = new Date().getDate() === day && new Date().getMonth() === month && new Date().getFullYear() === year;
-            const absenceConfig = entry?.absenceType ? absenceLabels[entry.absenceType] : null;
+            const absConfig = entry?.absenceType ? absenceLabels[entry.absenceType] : null;
             const isHolidayDay = entry?.isHoliday && !entry.absenceType;
             return (
-              <div key={day} onClick={() => handleDayClick(dateStr)} className={`min-h-[60px] p-2 border active:scale-95 cursor-pointer transition-all ${absenceConfig ? `${absenceConfig.color} bg-opacity-10` : isHolidayDay ? 'bg-pink-500/10 border-pink-500/30' : 'bg-[#111] border-white/5'}`}>
+              <div key={day} onClick={() => handleDayClick(dateStr)}
+                className={`min-h-[60px] p-2 border active:scale-95 cursor-pointer transition-all ${absConfig ? `${absConfig.color} bg-opacity-10` : isHolidayDay ? 'bg-pink-500/10 border-pink-500/30' : 'bg-[#111] border-white/5'}`}>
                 <div className="flex justify-between items-start">
                   <span className={`text-xs font-bold ${isToday ? 'text-blue-500 underline' : 'text-gray-500'}`}>{day}</span>
                   {isHolidayDay && <Gift size={10} className="text-pink-400" />}
                 </div>
-                {absenceConfig ? (
-                  <div className="mt-1 flex items-center gap-1">{React.createElement(absenceConfig.icon, { size: 10, className: absenceConfig.textColor })}</div>
+                {absConfig ? (
+                  <div className="mt-1">{React.createElement(absConfig.icon, { size: 10, className: absConfig.textColor })}</div>
                 ) : (
                   <div className="mt-1 space-y-1 overflow-hidden">
-                    {entry?.sessions?.slice(0, 2).map((s) => (
+                    {entry?.sessions?.slice(0, 2).map(s => (
                       <div key={s.id} className={`p-0.5 border-l-2 text-[8px] font-medium leading-tight ${isHolidayDay ? 'bg-pink-500/10 border-pink-500 text-pink-400' : 'bg-blue-500/10 border-blue-500 text-blue-400'}`}>
-                        {s.start.slice(0,5)}-{s.end.slice(0,5)}
+                        {s.start.slice(0, 5)}-{s.end.slice(0, 5)}
                       </div>
                     ))}
                     {entry?.sessions && entry.sessions.length > 2 && <div className="text-[8px] text-gray-500 font-bold">+{entry.sessions.length - 2}</div>}
@@ -203,10 +198,11 @@ export default function PlanningPage() {
           })}
         </div>
 
+        {/* Légende */}
         <div className="bg-[#111] border border-white/10 p-4 rounded-2xl">
           <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Légende</h3>
           <div className="grid grid-cols-3 gap-3">
-            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-500 rounded-sm shrink-0"></div><span className="text-[10px] text-gray-400">Travail</span></div>
+            <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-500 rounded-sm shrink-0" /><span className="text-[10px] text-gray-400">Travail</span></div>
             <div className="flex items-center gap-2"><Gift size={12} className="text-pink-400 shrink-0" /><span className="text-[10px] text-gray-400">Férié</span></div>
             {Object.entries(absenceLabels).map(([key, config]) => (
               <div key={key} className="flex items-center gap-2">
@@ -217,6 +213,7 @@ export default function PlanningPage() {
           </div>
         </div>
 
+        {/* Résumé */}
         <div className="bg-[#111] border border-white/10 p-6 rounded-3xl">
           <h3 className="text-gray-400 text-xs font-bold uppercase mb-4">Résumé mensuel</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -254,7 +251,8 @@ export default function PlanningPage() {
         </div>
       </div>
 
-      {showAbsenceModal && selectedDate && (
+      {/* MODAL */}
+      {showModal && selectedDate && (
         <div className="fixed inset-0 bg-[#0a0a0a] z-50 overflow-y-auto">
           <div className="min-h-screen p-4 flex flex-col">
             <div className="flex justify-between items-center mb-6">
@@ -264,11 +262,12 @@ export default function PlanningPage() {
                   {new Date(selectedDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
                 </p>
               </div>
-              <button onClick={() => { setSelectedDate(null); setShowAbsenceModal(false); }} className="p-2 bg-white/5 rounded-full hover:bg-white/10 active:scale-95 transition-all">
+              <button onClick={() => { setSelectedDate(null); setShowModal(false); }} className="p-2 bg-white/5 rounded-full hover:bg-white/10 active:scale-95 transition-all">
                 <X size={20} />
               </button>
             </div>
 
+            {/* Type de journée */}
             <div className="mb-6">
               <h3 className="text-sm font-bold text-gray-400 uppercase mb-3">Type de journée</h3>
               <div className="grid grid-cols-3 gap-2">
@@ -289,7 +288,7 @@ export default function PlanningPage() {
               <div className="flex-1 space-y-4">
                 <div className="p-4 bg-pink-500/5 border border-pink-500/20 rounded-2xl">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={isHolidayChecked} onChange={(e) => setIsHolidayChecked(e.target.checked)} className="w-6 h-6 rounded bg-[#1a1a1a] border-pink-500/50 text-pink-500" />
+                    <input type="checkbox" checked={isHolidayChecked} onChange={e => setIsHolidayChecked(e.target.checked)} className="w-6 h-6 rounded bg-[#1a1a1a] border-pink-500/50 text-pink-500" />
                     <div className="flex items-center gap-2 flex-1">
                       <Gift size={16} className="text-pink-400" />
                       <span className="font-bold text-sm">Jour Férié</span>
@@ -302,8 +301,8 @@ export default function PlanningPage() {
                     <div key={session.id} className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center gap-3">
                       <div className="bg-blue-600/20 text-blue-400 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0">{index + 1}</div>
                       <div className="flex-1 grid grid-cols-2 gap-3">
-                        <input type="time" value={session.start} onChange={(e) => updateSession(session.id, 'start', e.target.value)} className="bg-[#1a1a1a] border border-white/5 rounded-xl px-3 py-3 text-sm outline-none focus:border-blue-500" />
-                        <input type="time" value={session.end} onChange={(e) => updateSession(session.id, 'end', e.target.value)} className="bg-[#1a1a1a] border border-white/5 rounded-xl px-3 py-3 text-sm outline-none focus:border-blue-500" />
+                        <input type="time" value={session.start} onChange={e => updateSession(session.id, 'start', e.target.value)} className="bg-[#1a1a1a] border border-white/5 rounded-xl px-3 py-3 text-sm outline-none focus:border-blue-500" />
+                        <input type="time" value={session.end} onChange={e => updateSession(session.id, 'end', e.target.value)} className="bg-[#1a1a1a] border border-white/5 rounded-xl px-3 py-3 text-sm outline-none focus:border-blue-500" />
                       </div>
                       <button onClick={() => removeSession(session.id)} className="text-red-500/50 active:text-red-500 p-2 active:scale-95 transition-all"><Trash2 size={18} /></button>
                     </div>
@@ -332,7 +331,7 @@ export default function PlanningPage() {
               </div>
             )}
 
-            <div className="sticky bottom-0 pt-4 pb-safe">
+            <div className="sticky bottom-0 pt-4">
               <button onClick={handleSaveDay} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold active:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/40">
                 <Save size={18} /> Valider la journée
               </button>

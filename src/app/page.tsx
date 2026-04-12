@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { 
-  LayoutDashboard, Calendar, Settings, Wallet, Clock, TrendingUp, Moon, RefreshCw, Target, ChevronLeft, ChevronRight, Sparkles, X, BarChart3, Trophy, Menu, Umbrella, Gift, Eye, EyeOff
+  LayoutDashboard, Calendar, Settings, Wallet, Clock, TrendingUp, Moon,
+  RefreshCw, Target, ChevronLeft, ChevronRight, Sparkles, X, BarChart3,
+  Trophy, Menu, Umbrella, Gift, Eye, EyeOff
 } from 'lucide-react';
-
 import { supabase } from '@/utils/supabase';
 
 interface NightShift { id: string; start: string; end: string; rate: number; }
 interface WorkSession { id: string; start: string; end: string; }
-interface WorkEntry { 
+interface WorkEntry {
   date: string; sessions: WorkSession[];
   absenceType?: 'cp' | 'sick' | 'recovery' | 'unpaid' | null;
   isHoliday?: boolean;
@@ -18,14 +19,21 @@ interface WorkEntry {
 interface MonthHistory { label: string; net: number; isCurrent: boolean; }
 
 export default function LingoDashboard() {
+  // --- AUTH ---
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'offline' | 'error'>('idle');
 
+  // Sync discrète — ne bloque jamais l'affichage
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
+  const syncDoneRef = useRef(false);
+  const [dataReady, setDataReady] = useState(false);
+
+  // --- DASHBOARD ---
   const [activeTab, setActiveTab] = useState('dashboard');
   const [displayDecimal, setDisplayDecimal] = useState(false);
   const [showNet, setShowNet] = useState(false);
@@ -34,7 +42,7 @@ export default function LingoDashboard() {
   const [userName, setUserName] = useState("Utilisateur");
   const [isSimMode, setIsSimMode] = useState(false);
   const [simData, setSimData] = useState({ start: "22:00", end: "06:00" });
-  const [historyRange, setHistoryRange] = useState(3); 
+  const [historyRange, setHistoryRange] = useState(3);
   const [graphData, setGraphData] = useState<MonthHistory[]>([]);
 
   const [stats, setStats] = useState({
@@ -47,16 +55,14 @@ export default function LingoDashboard() {
     annualLeave: 25, leaveTaken: 0, leaveRemaining: 25
   });
 
-  // ─────────────────────────────────────────────
-  // SYNC INTELLIGENTE — LAST WRITE WINS
-  // ─────────────────────────────────────────────
-  const smartSync = async (userId: string) => {
-    setSyncStatus('syncing');
-
-    if (!navigator.onLine) {
-      setSyncStatus('offline');
-      return;
-    }
+  // ─────────────────────────────────────────────────────────────
+  // SYNC SILENCIEUSE — affiche les données locales IMMÉDIATEMENT
+  // puis sync le cloud EN ARRIÈRE-PLAN sans spinner bloquant
+  // ─────────────────────────────────────────────────────────────
+  const syncInBackground = async (userId: string) => {
+    if (!navigator.onLine) { setIsOffline(true); return; }
+    setIsOffline(false);
+    setIsSyncing(true);
 
     try {
       const localTs = localStorage.getItem('lingo_updated_at');
@@ -65,34 +71,26 @@ export default function LingoDashboard() {
       const localSettings = localStorage.getItem('lingo_settings');
 
       const { data: cloudData, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+        .from('user_profiles').select('*').eq('id', userId).single();
 
-      const cloudTimestamp = cloudData?.updated_at
-        ? new Date(cloudData.updated_at).getTime() : 0;
+      const cloudTimestamp = cloudData?.updated_at ? new Date(cloudData.updated_at).getTime() : 0;
 
       if (!cloudData || error) {
-        // Pas de données cloud → on envoie le local
-        if (localPlanning || localSettings) {
-          await pushToCloud(userId, localPlanning, localSettings);
-        }
+        if (localPlanning || localSettings) await pushToCloud(userId, localPlanning, localSettings);
       } else if (localTimestamp > cloudTimestamp) {
-        // Local plus récent → on pousse vers le cloud
         await pushToCloud(userId, localPlanning, localSettings);
       } else if (cloudTimestamp > localTimestamp) {
-        // Cloud plus récent → on tire depuis le cloud
         pullFromCloud(cloudData);
+        setDataReady(prev => !prev); // force recalcul après pull
       } else if (cloudData.planning_data || cloudData.settings_data) {
-        // Égalité ou premier chargement → on prend le cloud
         pullFromCloud(cloudData);
+        setDataReady(prev => !prev);
       }
-
-      setSyncStatus('done');
     } catch (err) {
-      console.error('Erreur sync :', err);
-      setSyncStatus('error');
+      console.error('Erreur sync background :', err);
+    } finally {
+      setIsSyncing(false);
+      syncDoneRef.current = true;
     }
   };
 
@@ -115,35 +113,31 @@ export default function LingoDashboard() {
 
   // Sync automatique au retour en ligne
   useEffect(() => {
-    const handleOnline = () => {
-      if (user) {
-        console.log('🌐 Retour en ligne → sync automatique');
-        smartSync(user.id);
-      }
-    };
+    const handleOnline = () => { setIsOffline(false); if (user) syncInBackground(user.id); };
+    const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
   }, [user]);
 
-  // ─────────────────────────────────────────────
-  // AUTH
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
+  // AUTH — s'arrête immédiatement, sync en arrière-plan ensuite
+  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const initSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      if (currentUser) await smartSync(currentUser.id);
-      setAuthLoading(false);
+      setAuthLoading(false); // ← arrêt spinner immédiat
+      if (currentUser && !syncDoneRef.current) syncInBackground(currentUser.id);
     };
     initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      if (currentUser) await smartSync(currentUser.id);
+      if (currentUser && !syncDoneRef.current) syncInBackground(currentUser.id);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -161,85 +155,72 @@ export default function LingoDashboard() {
     setAuthLoading(false);
   };
 
-  // ─────────────────────────────────────────────
-  // CALCULS
-  // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
+  // CALCULS — lecture directe du localStorage
+  // ─────────────────────────────────────────────────────────────
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
 
   useEffect(() => {
-    if (!user || syncStatus === 'syncing') return;
+    if (!user) return;
 
     const savedSettings = localStorage.getItem('lingo_settings');
     const savedPlanning = localStorage.getItem('lingo_planning');
-    
+
     let rate = 0, hours = 0, shifts: NightShift[] = [];
     let charges = 21.9, fixed = 0, tax = 0, target = 0;
     let totalH = 0, totalHFinancial = 0, totalNightH = 0, totalBonus = 0;
     let totalHolidayH = 0, totalHolidayBonus = 0;
-    let name = user.email?.split('@')[0] || "Utilisateur"; 
-    let annualLeave = 25, leaveTaken = 0, leaveDayValue = 7, holidayRate = 100; 
+    let name = user.email?.split('@')[0] || "Utilisateur";
+    let annualLeave = 25, leaveTaken = 0, leaveDayValue = 7, holidayRate = 100;
 
     if (savedSettings) {
-      const parsed = JSON.parse(savedSettings);
-      rate = parsed.hourlyRate || 0; hours = parsed.contractHours || 0;
-      shifts = parsed.nightShifts || []; charges = parsed.socialChargesRate ?? 21.9;
-      fixed = parsed.fixedDeductions || 0; tax = parsed.taxRate || 0;
-      target = parsed.targetNet || 0;
-      if (parsed.userName) name = parsed.userName;
-      annualLeave = parsed.annualLeave || 25;
-      leaveDayValue = parsed.leaveDayValue || 7;
-      holidayRate = parsed.holidayRate || 100;
+      const p = JSON.parse(savedSettings);
+      rate = p.hourlyRate || 0; hours = p.contractHours || 0;
+      shifts = p.nightShifts || []; charges = p.socialChargesRate ?? 21.9;
+      fixed = p.fixedDeductions || 0; tax = p.taxRate || 0; target = p.targetNet || 0;
+      if (p.userName) name = p.userName;
+      annualLeave = p.annualLeave || 25; leaveDayValue = p.leaveDayValue || 7; holidayRate = p.holidayRate || 100;
     }
     setUserName(name);
 
     if (savedPlanning) {
       try {
         const entries: WorkEntry[] = JSON.parse(savedPlanning);
-        const selMonth = currentDate.getMonth();
-        const selYear = currentDate.getFullYear();
+        const selMonth = currentDate.getMonth(), selYear = currentDate.getFullYear();
 
         entries.forEach(entry => {
           const d = new Date(entry.date);
-          const isSelectedMonth = d.getMonth() === selMonth && d.getFullYear() === selYear;
-          if (entry.absenceType === 'cp') {
-            leaveTaken++;
-            if (isSelectedMonth) totalHFinancial += leaveDayValue;
-          }
-          if (isSelectedMonth && !entry.absenceType) {
-            entry.sessions?.forEach(session => {
-              const res = calculateSession(session.start, session.end, rate, shifts, entry.isHoliday || false, holidayRate);
-              totalH += res.h; totalHFinancial += res.h;
-              totalNightH += res.nH; totalBonus += res.b;
+          const isSel = d.getMonth() === selMonth && d.getFullYear() === selYear;
+          if (entry.absenceType === 'cp') { leaveTaken++; if (isSel) totalHFinancial += leaveDayValue; }
+          if (isSel && !entry.absenceType) {
+            entry.sessions?.forEach(s => {
+              const res = calcSession(s.start, s.end, rate, shifts, entry.isHoliday || false, holidayRate);
+              totalH += res.h; totalHFinancial += res.h; totalNightH += res.nH; totalBonus += res.b;
               if (entry.isHoliday) { totalHolidayH += res.h; totalHolidayBonus += res.hB; }
             });
           }
         });
 
-        const tempGraphData: MonthHistory[] = [];
+        const tempGraph: MonthHistory[] = [];
         for (let i = historyRange; i >= 0; i--) {
-          const targetDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i);
-          let mHFinancier = 0, mB = 0, mHB = 0;
+          const td = new Date(currentDate.getFullYear(), currentDate.getMonth() - i);
+          let mH = 0, mB = 0, mHB = 0;
           entries.forEach(entry => {
             const d = new Date(entry.date);
-            if (d.getMonth() === targetDate.getMonth() && d.getFullYear() === targetDate.getFullYear()) {
-              if (entry.absenceType === 'cp') { mHFinancier += leaveDayValue; }
-              else {
-                entry.sessions?.forEach(session => {
-                  const res = calculateSession(session.start, session.end, rate, shifts, entry.isHoliday || false, holidayRate);
-                  mHFinancier += res.h; mB += res.b; mHB += res.hB;
-                });
-              }
+            if (d.getMonth() === td.getMonth() && d.getFullYear() === td.getFullYear()) {
+              if (entry.absenceType === 'cp') { mH += leaveDayValue; }
+              else { entry.sessions?.forEach(s => { const r = calcSession(s.start, s.end, rate, shifts, entry.isHoliday || false, holidayRate); mH += r.h; mB += r.b; mHB += r.hB; }); }
             }
           });
-          const mBrut = (mHFinancier * rate) + mB + mHB;
-          const mNet = Math.max(0, (mBrut - (mBrut * (charges / 100)) - fixed) * (1 - tax / 100));
-          tempGraphData.push({ label: targetDate.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', ''), net: mNet, isCurrent: i === 0 });
+          const mBrut = (mH * rate) + mB + mHB;
+          const mNet = Math.max(0, (mBrut - mBrut * (charges / 100) - fixed) * (1 - tax / 100));
+          tempGraph.push({ label: td.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', ''), net: mNet, isCurrent: i === 0 });
         }
-        setGraphData(tempGraphData);
+        setGraphData(tempGraph);
       } catch (e) { console.error(e); }
     }
-    
+
     setStats({
       hourlyRate: rate, contractHours: hours, baseSalary: rate * hours,
       totalHoursMonth: totalH, totalHoursFinancial: totalHFinancial,
@@ -248,9 +229,9 @@ export default function LingoDashboard() {
       socialChargesRate: charges, fixedDeductions: fixed, taxRate: tax, targetNet: target,
       rawShifts: shifts, annualLeave, leaveTaken, leaveRemaining: annualLeave - leaveTaken
     });
-  }, [currentDate, historyRange, user, syncStatus]);
+  }, [currentDate, historyRange, user, dataReady]);
 
-  function calculateSession(startStr: string, endStr: string, rate: number, shifts: NightShift[], isHoliday: boolean, holidayRate: number) {
+  function calcSession(startStr: string, endStr: string, rate: number, shifts: NightShift[], isHoliday: boolean, holidayRate: number) {
     const [hS, mS] = startStr.split(':').map(Number);
     const [hE, mE] = endStr.split(':').map(Number);
     let start = hS + mS / 60, end = hE + mE / 60;
@@ -261,20 +242,18 @@ export default function LingoDashboard() {
       shifts.forEach(s => {
         const [sh, sm] = s.start.split(':').map(Number);
         const [eh, em] = s.end.split(':').map(Number);
-        let sr = sh + sm / 60, er = eh + em / 60;
+        const sr = sh + sm / 60, er = eh + em / 60;
         const inR = er > sr ? (curr >= sr && curr < er) : (curr >= sr || curr < er);
         if (inR) { nH += 0.25; b += (rate * (s.rate / 100)) * 0.25; }
       });
     }
-    return { h, nH, b, hB: isHoliday ? (h * rate * (holidayRate / 100)) : 0 };
+    return { h, nH, b, hB: isHoliday ? h * rate * (holidayRate / 100) : 0 };
   }
 
   const toNet = (brut: number) => Math.max(0, (brut - brut * (stats.socialChargesRate / 100) - stats.fixedDeductions) * (1 - stats.taxRate / 100));
-
-  const formatHours = (decimal: number) => {
+  const fmt = (decimal: number) => {
     if (displayDecimal) return `${decimal.toFixed(2)}h`;
-    const h = Math.floor(decimal);
-    const m = Math.round((decimal - h) * 60);
+    const h = Math.floor(decimal), m = Math.round((decimal - h) * 60);
     return `${h}h ${m.toString().padStart(2, '0')}min`;
   };
 
@@ -283,8 +262,8 @@ export default function LingoDashboard() {
   const progressBrut = (stats.totalHoursMonth * stats.hourlyRate) + stats.nightBonus + stats.holidayBonus;
   const progressNet = toNet(progressBrut);
   const baseNet = toNet(stats.baseSalary);
-  const sim = calculateSession(simData.start, simData.end, stats.hourlyRate, stats.rawShifts, false, stats.holidayRate);
-  const simNet = toNet(currentTotalBrut + (sim.h * stats.hourlyRate) + sim.b) - currentTotalNet;
+  const sim = calcSession(simData.start, simData.end, stats.hourlyRate, stats.rawShifts, false, stats.holidayRate);
+  const simNet = toNet(currentTotalBrut + sim.h * stats.hourlyRate + sim.b) - currentTotalNet;
   const isContractMet = stats.totalHoursMonth >= stats.contractHours;
   const hasTarget = stats.targetNet > 0;
   const financialTarget = hasTarget ? stats.targetNet : baseNet;
@@ -296,21 +275,18 @@ export default function LingoDashboard() {
   const maxNetInGraph = Math.max(...graphData.map(d => d.net), 1);
   const leaveProgress = (stats.leaveTaken / stats.annualLeave) * 100;
 
-  // ─────────────────────────────────────────────
-  // LOADING
-  // ─────────────────────────────────────────────
-  if (authLoading || syncStatus === 'syncing') {
+  // ─────────────────────────────────────────────────────────────
+  // LOADING — uniquement auth (rapide), jamais la sync
+  // ─────────────────────────────────────────────────────────────
+  if (authLoading) {
     return (
-      <div className="h-screen bg-[#0a0a0a] flex flex-col items-center justify-center gap-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500"></div>
-        <p className="text-gray-400 text-sm animate-pulse">Synchronisation en cours...</p>
+      <div className="h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500" />
       </div>
     );
   }
 
-  // ─────────────────────────────────────────────
   // LOGIN
-  // ─────────────────────────────────────────────
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-[#0a0a0a] p-4 font-sans text-white">
@@ -320,10 +296,15 @@ export default function LingoDashboard() {
             {isSignUp ? "Créez votre compte sécurisé" : "Connectez-vous pour voir vos gains"}
           </p>
           <form onSubmit={handleAuth} className="space-y-4">
-            <input type="email" placeholder="Email" className="w-full p-3 border border-white/10 rounded-xl bg-black text-white outline-none focus:ring-2 focus:ring-blue-500" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input type="email" placeholder="Email"
+              className="w-full p-3 border border-white/10 rounded-xl bg-black text-white outline-none focus:ring-2 focus:ring-blue-500"
+              value={email} onChange={e => setEmail(e.target.value)} required />
             <div className="relative">
-              <input type={showPassword ? "text" : "password"} placeholder="Mot de passe" className="w-full p-3 pr-12 border border-white/10 rounded-xl bg-black text-white outline-none focus:ring-2 focus:ring-blue-500" value={password} onChange={(e) => setPassword(e.target.value)} required />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors p-1" aria-label={showPassword ? "Masquer" : "Afficher"}>
+              <input type={showPassword ? "text" : "password"} placeholder="Mot de passe"
+                className="w-full p-3 pr-12 border border-white/10 rounded-xl bg-black text-white outline-none focus:ring-2 focus:ring-blue-500"
+                value={password} onChange={e => setPassword(e.target.value)} required />
+              <button type="button" onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors p-1">
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
@@ -331,7 +312,8 @@ export default function LingoDashboard() {
               {isSignUp ? "Créer mon compte" : "Se connecter"}
             </button>
           </form>
-          <button onClick={() => { setIsSignUp(!isSignUp); setShowPassword(false); }} className="w-full mt-6 text-sm text-blue-400 hover:underline">
+          <button onClick={() => { setIsSignUp(!isSignUp); setShowPassword(false); }}
+            className="w-full mt-6 text-sm text-blue-400 hover:underline">
             {isSignUp ? "Déjà un compte ? Connexion" : "Pas encore de compte ? S'inscrire"}
           </button>
         </div>
@@ -339,13 +321,12 @@ export default function LingoDashboard() {
     );
   }
 
-  // ─────────────────────────────────────────────
   // DASHBOARD
-  // ─────────────────────────────────────────────
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden">
-      {isSidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
+      {/* SIDEBAR */}
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 bg-[#111] border-r border-white/10 flex flex-col transition-transform duration-300 ease-in-out w-64 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-6 flex items-center justify-between border-b border-white/10">
           <h1 className="text-xl font-bold bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent italic">LINGO PAY</h1>
@@ -358,11 +339,11 @@ export default function LingoDashboard() {
           </Link>
         </nav>
         <div className="mt-auto border-t border-white/10 p-4 space-y-4">
-          {/* Indicateur de sync */}
+          {/* Indicateur sync discret */}
           <div className="px-2 flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full transition-colors ${syncStatus === 'done' ? 'bg-green-500' : syncStatus === 'offline' ? 'bg-orange-400 animate-pulse' : syncStatus === 'error' ? 'bg-red-500' : 'bg-gray-500'}`}></div>
+            <div className={`w-2 h-2 rounded-full transition-all ${isSyncing ? 'bg-blue-400 animate-pulse' : isOffline ? 'bg-orange-400' : 'bg-green-500'}`} />
             <span className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">
-              {syncStatus === 'done' ? 'Synchronisé ✓' : syncStatus === 'offline' ? 'Hors ligne' : syncStatus === 'error' ? 'Erreur sync' : 'Cloud'}
+              {isSyncing ? 'Sync…' : isOffline ? 'Hors ligne' : 'Synchronisé'}
             </span>
           </div>
           <Link href="/settings" onClick={() => setIsSidebarOpen(false)}>
@@ -371,12 +352,11 @@ export default function LingoDashboard() {
           <button onClick={() => supabase.auth.signOut()} className="w-full flex items-center px-4 py-3 gap-3 rounded-xl transition-all text-red-500 hover:bg-red-500/10">
             <X size={20} /><span className="font-medium text-sm">Déconnexion</span>
           </button>
-          <div className="px-2 text-left">
-            <p className="text-[10px] font-bold text-gray-600 uppercase tracking-tighter italic">Copyright @KFDesign 2026</p>
-          </div>
+          <div className="px-2"><p className="text-[10px] font-bold text-gray-600 uppercase tracking-tighter italic">Copyright @KFDesign 2026</p></div>
         </div>
       </aside>
 
+      {/* MAIN */}
       <main className="flex-1 overflow-y-auto">
         <div className="sticky top-0 z-30 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 p-4 lg:hidden">
           <div className="flex items-center justify-between">
@@ -386,10 +366,9 @@ export default function LingoDashboard() {
           </div>
         </div>
 
-        {/* Bannière hors ligne */}
-        {syncStatus === 'offline' && (
-          <div className="mx-4 lg:mx-8 mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl text-orange-400 text-xs font-bold flex items-center gap-2">
-            📡 Mode hors ligne — vos données seront synchronisées automatiquement à la reconnexion
+        {isOffline && (
+          <div className="mx-4 lg:mx-8 mt-3 p-2 bg-orange-500/10 border border-orange-500/20 rounded-xl text-orange-400 text-[10px] font-bold flex items-center gap-2">
+            📡 Hors ligne — sync automatique à la reconnexion
           </div>
         )}
 
@@ -430,21 +409,21 @@ export default function LingoDashboard() {
                     <p className="text-[10px] lg:text-xs text-purple-400/60 uppercase tracking-widest font-bold italic">Gain potentiel</p>
                   </div>
                 </div>
-                <button onClick={() => setIsSimMode(false)} className="text-gray-500 hover:text-white p-1"><X size={20}/></button>
+                <button onClick={() => setIsSimMode(false)} className="text-gray-500 hover:text-white p-1"><X size={20} /></button>
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6">
                 <div className="space-y-2 text-left">
                   <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Début</label>
-                  <input type="time" value={simData.start} onChange={e => setSimData({...simData, start: e.target.value})} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
+                  <input type="time" value={simData.start} onChange={e => setSimData({ ...simData, start: e.target.value })} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
                 </div>
                 <div className="space-y-2 text-left">
                   <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Fin</label>
-                  <input type="time" value={simData.end} onChange={e => setSimData({...simData, end: e.target.value})} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
+                  <input type="time" value={simData.end} onChange={e => setSimData({ ...simData, end: e.target.value })} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
                 </div>
                 <div className="col-span-2 bg-[#0a0a0a]/50 rounded-2xl p-4 border border-purple-500/20 text-left">
                   <p className="text-[10px] font-black text-purple-400/80 uppercase mb-1">Impact Net</p>
                   <p className="text-xl lg:text-2xl font-black text-white">+{simNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
-                  <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">{formatHours(sim.h)} total</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">{fmt(sim.h)} total</p>
                 </div>
               </div>
             </div>
@@ -452,16 +431,14 @@ export default function LingoDashboard() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
             <StatCard title={showNet ? "Base Nette" : "Base Brute"} value={`${(showNet ? baseNet : stats.baseSalary).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Wallet className={showNet ? "text-green-400" : "text-blue-400"} />} label={showNet ? `Après ${stats.socialChargesRate}% charges` : "Salaire fixe"} onSwitch={() => setShowNet(!showNet)} isNet={showNet} />
-            <StatCard title="Primes de Nuit" value={`${(showNet ? toNet((stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus) - toNet(stats.totalHoursFinancial * stats.hourlyRate) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Moon className="text-blue-400" />} label={`${formatHours(stats.nightHours)} majorées`} />
-            <StatCard title="Bonus Fériés" value={`${(showNet ? toNet(stats.holidayBonus) : stats.holidayBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Gift className="text-pink-400" />} label={`${formatHours(stats.holidayHours)} à +${stats.holidayRate}%`} />
-            <div className="border p-4 lg:p-6 rounded-2xl transition-all bg-[#111] border-white/10 text-left">
-              <div className="flex justify-between items-start mb-3 lg:mb-4">
-                <div className="p-2 lg:p-3 bg-white/5 rounded-xl border border-white/5 w-fit"><Umbrella className="text-orange-400" size={18} /></div>
-              </div>
+            <StatCard title="Primes de Nuit" value={`${(showNet ? toNet((stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus) - toNet(stats.totalHoursFinancial * stats.hourlyRate) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Moon className="text-blue-400" />} label={`${fmt(stats.nightHours)} majorées`} />
+            <StatCard title="Bonus Fériés" value={`${(showNet ? toNet(stats.holidayBonus) : stats.holidayBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Gift className="text-pink-400" />} label={`${fmt(stats.holidayHours)} à +${stats.holidayRate}%`} />
+            <div className="border p-4 lg:p-6 rounded-2xl bg-[#111] border-white/10 text-left">
+              <div className="mb-3 lg:mb-4"><div className="p-2 lg:p-3 bg-white/5 rounded-xl border border-white/5 w-fit"><Umbrella className="text-orange-400" size={18} /></div></div>
               <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Congés Payés</p>
               <h4 className="text-xl lg:text-2xl font-bold">{stats.leaveRemaining} jours</h4>
               <div className="mt-3 bg-white/5 rounded-full h-2 overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }}></div>
+                <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }} />
               </div>
               <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} / {stats.annualLeave} pris</p>
             </div>
@@ -480,7 +457,7 @@ export default function LingoDashboard() {
                 </p>
               </div>
               <div className="text-left sm:text-right">
-                <span className="text-sm font-mono text-white block">{formatHours(stats.totalHoursMonth)} / {stats.contractHours}h</span>
+                <span className="text-sm font-mono text-white block">{fmt(stats.totalHoursMonth)} / {stats.contractHours}h</span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isContractMet ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
                   {((stats.totalHoursMonth / stats.contractHours) * 100).toFixed(1)}%
                 </span>
@@ -488,16 +465,16 @@ export default function LingoDashboard() {
             </div>
             <div className="flex gap-2 w-full h-4 lg:h-5 mb-4">
               <div className={`${shouldSplitBar ? 'flex-[4]' : 'w-full'} h-full bg-white/5 rounded-l-full overflow-hidden border border-white/5`}>
-                <div className={`h-full transition-all duration-1000 ease-out shadow-lg ${isContractMet ? 'bg-green-500 shadow-green-500/20' : 'bg-blue-600 shadow-blue-500/20'}`} style={{ width: `${baseProgress}%` }}></div>
+                <div className={`h-full transition-all duration-1000 ease-out shadow-lg ${isContractMet ? 'bg-green-500 shadow-green-500/20' : 'bg-blue-600 shadow-blue-500/20'}`} style={{ width: `${baseProgress}%` }} />
               </div>
               {shouldSplitBar && (
                 <div className="flex-1 h-full bg-white/5 rounded-r-full overflow-hidden border border-white/5">
-                  <div className="h-full bg-green-900 transition-all duration-1000 ease-out" style={{ width: `${extraProgress}%` }}></div>
+                  <div className="h-full bg-green-900 transition-all duration-1000 ease-out" style={{ width: `${extraProgress}%` }} />
                 </div>
               )}
             </div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 border-t border-white/5 text-left">
-              <div className="flex flex-col">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 border-t border-white/5">
+              <div>
                 <span className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter flex items-center gap-1">
                   <Target size={10} className="text-green-600" /> Actuel Net Travailler / {hasTarget ? "Objectif" : "Base"}
                 </span>
@@ -506,7 +483,7 @@ export default function LingoDashboard() {
                 </span>
               </div>
               <p className="text-xs lg:text-sm text-orange-400/80 italic flex items-center gap-2">
-                <Clock size={14} />{isContractMet ? "Heures supp." : `${formatHours(remainingHours)} restantes`}
+                <Clock size={14} />{isContractMet ? "Heures supp." : `${fmt(remainingHours)} restantes`}
               </p>
             </div>
           </div>
@@ -521,17 +498,17 @@ export default function LingoDashboard() {
                 </div>
               </div>
               <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 gap-1 w-full sm:w-auto">
-                {[3, 6, 12].map((range) => (
-                  <button key={range} onClick={() => setHistoryRange(range)} className={`flex-1 sm:flex-initial px-3 lg:px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${historyRange === range ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500'}`}>{range}M</button>
+                {[3, 6, 12].map(r => (
+                  <button key={r} onClick={() => setHistoryRange(r)} className={`flex-1 sm:flex-initial px-3 lg:px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${historyRange === r ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500'}`}>{r}M</button>
                 ))}
               </div>
             </div>
             <div className="p-4 lg:p-8 relative min-h-[250px] lg:min-h-[350px]">
               <div className="absolute inset-x-4 lg:inset-x-8 top-4 lg:top-8 bottom-16 lg:bottom-20 flex flex-col justify-between pointer-events-none">
-                {[1, 0.75, 0.5, 0.25, 0].map((ratio) => (
+                {[1, 0.75, 0.5, 0.25, 0].map(ratio => (
                   <div key={ratio} className="flex items-center gap-2 lg:gap-4 w-full">
                     <span className="text-[9px] text-gray-600 font-bold w-8 lg:w-12 text-right">{(maxNetInGraph * ratio).toLocaleString('fr-FR', { maximumFractionDigits: 0 })}€</span>
-                    <div className="flex-1 border-t border-white/5"></div>
+                    <div className="flex-1 border-t border-white/5" />
                   </div>
                 ))}
               </div>
@@ -546,10 +523,10 @@ export default function LingoDashboard() {
                           {isMax && <Trophy size={10} className="text-amber-500" />}
                           {month.net.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
                         </div>
-                        <div className="w-2 h-2 bg-white rotate-45 mx-auto -mt-1"></div>
+                        <div className="w-2 h-2 bg-white rotate-45 mx-auto -mt-1" />
                       </div>
-                      <div className={`w-6 lg:w-10 rounded-t-xl transition-all duration-700 ease-out ${month.isCurrent ? 'bg-gradient-to-t from-blue-600 to-blue-400' : isMax ? 'bg-gradient-to-t from-green-600 to-emerald-400' : 'bg-white/10'}`} style={{ height: `${height || 2}%` }}></div>
-                      <div className="absolute top-full mt-2 lg:mt-4 flex flex-col items-center">
+                      <div className={`w-6 lg:w-10 rounded-t-xl transition-all duration-700 ease-out ${month.isCurrent ? 'bg-gradient-to-t from-blue-600 to-blue-400' : isMax ? 'bg-gradient-to-t from-green-600 to-emerald-400' : 'bg-white/10'}`} style={{ height: `${height || 2}%` }} />
+                      <div className="absolute top-full mt-2 lg:mt-4">
                         <span className={`text-[9px] lg:text-[10px] font-black uppercase tracking-widest ${month.isCurrent ? 'text-blue-400' : 'text-gray-500'}`}>{month.label}</span>
                       </div>
                     </div>
@@ -564,7 +541,7 @@ export default function LingoDashboard() {
   );
 }
 
-function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick?: () => void }) {
+function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick?: () => void }) {
   return (
     <button onClick={onClick} className={`w-full flex items-center px-4 py-3 gap-3 rounded-xl transition-all ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-gray-400 hover:bg-white/5'}`}>
       <div className="shrink-0">{icon}</div>
@@ -573,7 +550,7 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
   );
 }
 
-function StatCard({ title, value, icon, label, highlight, onSwitch, isNet }: { title: string, value: string, icon: React.ReactNode, label?: string, highlight?: boolean, onSwitch?: () => void, isNet?: boolean }) {
+function StatCard({ title, value, icon, label, highlight, onSwitch, isNet }: { title: string; value: string; icon: React.ReactNode; label?: string; highlight?: boolean; onSwitch?: () => void; isNet?: boolean }) {
   return (
     <div className={`border p-4 lg:p-6 rounded-2xl transition-all relative text-left ${highlight ? 'bg-blue-600/10 border-blue-500/50 shadow-lg shadow-blue-500/5' : 'bg-[#111] border-white/10'}`}>
       <div className="flex justify-between items-start mb-3 lg:mb-4">
