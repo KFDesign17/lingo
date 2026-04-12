@@ -3,8 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
-  LayoutDashboard, Calendar, Settings, Wallet, Clock, TrendingUp, Moon, RefreshCw, Target, ChevronLeft, ChevronRight, Sparkles, X, BarChart3, Trophy, Menu, Umbrella, Gift
+  LayoutDashboard, Calendar, Settings, Wallet, Clock, TrendingUp, Moon, RefreshCw, Target, ChevronLeft, ChevronRight, Sparkles, X, BarChart3, Trophy, Menu, Umbrella, Gift, Eye, EyeOff
 } from 'lucide-react';
+
+// Importation du client Supabase
+import { supabase } from '@/utils/supabase';
 
 interface NightShift {
   id: string;
@@ -23,6 +26,15 @@ interface WorkEntry {
 interface MonthHistory { label: string; net: number; isCurrent: boolean; }
 
 export default function LingoDashboard() {
+  // --- ÉTATS POUR L'AUTH ---
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  // --- ÉTATS DU DASHBOARD ---
   const [activeTab, setActiveTab] = useState('dashboard');
   const [displayDecimal, setDisplayDecimal] = useState(false);
   const [showNet, setShowNet] = useState(false);
@@ -56,10 +68,43 @@ export default function LingoDashboard() {
     leaveRemaining: 25
   });
 
+  // --- LOGIQUE D'AUTH ---
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    };
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) alert(error.message);
+      else alert("Vérifie tes emails pour confirmer l'inscription !");
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) alert(error.message);
+    }
+    setAuthLoading(false);
+  };
+
+  // --- LOGIQUE CALCULS ---
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
 
   useEffect(() => {
+    if (!user) return;
+
     const savedSettings = localStorage.getItem('lingo_settings');
     const savedPlanning = localStorage.getItem('lingo_planning');
     
@@ -67,7 +112,7 @@ export default function LingoDashboard() {
     let charges = 21.9, fixed = 0, tax = 0, target = 0;
     let totalH = 0, totalHFinancial = 0, totalNightH = 0, totalBonus = 0;
     let totalHolidayH = 0, totalHolidayBonus = 0;
-    let name = "Utilisateur";
+    let name = user.email?.split('@')[0] || "Utilisateur"; 
     let annualLeave = 25;
     let leaveTaken = 0;
     let leaveDayValue = 7;
@@ -82,7 +127,7 @@ export default function LingoDashboard() {
       fixed = parsed.fixedDeductions || 0;
       tax = parsed.taxRate || 0;
       target = parsed.targetNet || 0;
-      name = parsed.userName || "Utilisateur";
+      if (parsed.userName) name = parsed.userName;
       annualLeave = parsed.annualLeave || 25;
       leaveDayValue = parsed.leaveDayValue || 7;
       holidayRate = parsed.holidayRate || 100;
@@ -170,7 +215,7 @@ export default function LingoDashboard() {
       leaveTaken,
       leaveRemaining: annualLeave - leaveTaken
     });
-  }, [currentDate, historyRange]); 
+  }, [currentDate, historyRange, user]);
 
   function calculateSession(startStr: string, endStr: string, rate: number, shifts: NightShift[], isHoliday: boolean, holidayRate: number) {
     const [hS, mS] = startStr.split(':').map(Number);
@@ -230,6 +275,75 @@ export default function LingoDashboard() {
   const maxNetInGraph = Math.max(...graphData.map(d => d.net), 1);
   const leaveProgress = (stats.leaveTaken / stats.annualLeave) * 100;
 
+  // --- RENDU : LOADING ---
+  if (authLoading) {
+    return (
+      <div className="h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  // --- RENDU : LOGIN ---
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#0a0a0a] p-4 font-sans text-white">
+        <div className="bg-[#111] p-8 rounded-2xl shadow-xl w-full max-w-md border border-white/10">
+          <h1 className="text-3xl font-black text-center text-blue-500 mb-2 italic">LINGO PAY</h1>
+          <p className="text-center text-gray-400 mb-8">
+            {isSignUp ? "Créez votre compte sécurisé" : "Connectez-vous pour voir vos gains"}
+          </p>
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            <input 
+              type="email" 
+              placeholder="Email" 
+              className="w-full p-3 border border-white/10 rounded-xl bg-black text-white outline-none focus:ring-2 focus:ring-blue-500"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+
+            {/* Champ mot de passe avec bouton afficher/masquer */}
+            <div className="relative">
+              <input 
+                type={showPassword ? "text" : "password"}
+                placeholder="Mot de passe" 
+                className="w-full p-3 pr-12 border border-white/10 rounded-xl bg-black text-white outline-none focus:ring-2 focus:ring-blue-500"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors p-1"
+                aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            <button 
+              type="submit" 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg active:scale-95"
+            >
+              {isSignUp ? "Créer mon compte" : "Se connecter"}
+            </button>
+          </form>
+
+          <button 
+            onClick={() => { setIsSignUp(!isSignUp); setShowPassword(false); }}
+            className="w-full mt-6 text-sm text-blue-400 hover:underline"
+          >
+            {isSignUp ? "Déjà un compte ? Connexion" : "Pas encore de compte ? S'inscrire"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- RENDU : DASHBOARD ---
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden">
       
@@ -285,6 +399,13 @@ export default function LingoDashboard() {
               active={activeTab === 'settings'} 
             />
           </Link>
+          <button 
+            onClick={() => supabase.auth.signOut()}
+            className="w-full flex items-center px-4 py-3 gap-3 rounded-xl transition-all text-red-500 hover:bg-red-500/10"
+          >
+            <X size={20} />
+            <span className="font-medium text-sm">Déconnexion</span>
+          </button>
           <div className="px-2 text-left">
             <p className="text-[10px] font-bold text-gray-600 uppercase tracking-tighter italic">
               Copyright @KFDesign 2026
@@ -376,7 +497,7 @@ export default function LingoDashboard() {
             </div>
           )}
 
-          {/* Stats Grid - 1 colonne sur mobile, 2 sur tablette, 4 sur desktop */}
+          {/* Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
             <StatCard 
               title={showNet ? "Base Nette" : "Base Brute"} 
@@ -419,10 +540,9 @@ export default function LingoDashboard() {
             </div>
           </div>
 
-          {/* Estimation Gain - Pleine largeur */}
           <div className="mb-6 lg:mb-8">
             <StatCard 
-              title={showNet ? "💰 Gain Net Total" : "💰 Gain Brut Total"} 
+              title={showNet ? "💰 Simul Gain Net Total" : "💰 Simul Gain Brut Total"} 
               value={`${(showNet ? currentTotalNet : currentTotalBrut).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} 
               icon={<TrendingUp className="text-purple-400" />} 
               highlight 
@@ -434,7 +554,7 @@ export default function LingoDashboard() {
           <div className="bg-[#111] border border-white/10 rounded-2xl lg:rounded-3xl p-4 lg:p-6 mb-6 lg:mb-8 text-left">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-4">
               <div>
-                <h3 className="text-base lg:text-lg font-medium">Progression mensuelle</h3>
+                <h3 className="text-base lg:text-lg font-medium">Progression mensuelle en cours</h3>
                 <p className={`text-xl lg:text-2xl font-bold mt-1 ${showNet ? 'text-green-400' : 'text-blue-400'}`}>
                   {(showNet ? progressNet : progressBrut).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
                 </p>
@@ -459,7 +579,7 @@ export default function LingoDashboard() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 border-t border-white/5 text-left">
               <div className="flex flex-col">
                 <span className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter flex items-center gap-1">
-                  <Target size={10} className="text-green-600" /> Actuel / {hasTarget ? "Objectif" : "Base"}
+                  <Target size={10} className="text-green-600" /> Actuel Net Travailler / {hasTarget ? "Objectif" : "Base"}
                 </span>
                 <span className="text-sm font-semibold text-gray-300">
                   {progressNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })}€ / {financialTarget.toLocaleString('fr-FR', { minimumFractionDigits: 2 })}€
@@ -526,7 +646,7 @@ export default function LingoDashboard() {
                             ? 'bg-gradient-to-t from-green-600 to-emerald-400' 
                             : 'bg-white/10'
                         }`} 
-                        style={{ height: `${Math.max(height, 2)}%` }}
+                        style={{ height: `${height || 2}%` }}
                       ></div>
                       <div className="absolute top-full mt-2 lg:mt-4 flex flex-col items-center">
                         <span className={`text-[9px] lg:text-[10px] font-black uppercase tracking-widest ${month.isCurrent ? 'text-blue-400' : 'text-gray-500'}`}>
@@ -545,6 +665,7 @@ export default function LingoDashboard() {
   );
 }
 
+// COMPOSANTS AUXILIAIRES
 function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, label: string, active: boolean, onClick?: () => void }) {
   return (
     <button 
