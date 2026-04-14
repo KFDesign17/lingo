@@ -56,8 +56,7 @@ export default function LingoDashboard() {
   });
 
   // ─────────────────────────────────────────────────────────────
-  // SYNC SILENCIEUSE — affiche les données locales IMMÉDIATEMENT
-  // puis sync le cloud EN ARRIÈRE-PLAN sans spinner bloquant
+  // SYNC SILENCIEUSE
   // ─────────────────────────────────────────────────────────────
   const syncInBackground = async (userId: string) => {
     if (!navigator.onLine) { setIsOffline(true); return; }
@@ -81,7 +80,7 @@ export default function LingoDashboard() {
         await pushToCloud(userId, localPlanning, localSettings);
       } else if (cloudTimestamp > localTimestamp) {
         pullFromCloud(cloudData);
-        setDataReady(prev => !prev); // force recalcul après pull
+        setDataReady(prev => !prev);
       } else if (cloudData.planning_data || cloudData.settings_data) {
         pullFromCloud(cloudData);
         setDataReady(prev => !prev);
@@ -111,7 +110,6 @@ export default function LingoDashboard() {
     if (cloudData.updated_at) localStorage.setItem('lingo_updated_at', cloudData.updated_at);
   };
 
-  // Sync automatique au retour en ligne
   useEffect(() => {
     const handleOnline = () => { setIsOffline(false); if (user) syncInBackground(user.id); };
     const handleOffline = () => setIsOffline(true);
@@ -121,14 +119,14 @@ export default function LingoDashboard() {
   }, [user]);
 
   // ─────────────────────────────────────────────────────────────
-  // AUTH — s'arrête immédiatement, sync en arrière-plan ensuite
+  // AUTH
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const initSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      setAuthLoading(false); // ← arrêt spinner immédiat
+      setAuthLoading(false);
       if (currentUser && !syncDoneRef.current) syncInBackground(currentUser.id);
     };
     initSession();
@@ -156,7 +154,7 @@ export default function LingoDashboard() {
   };
 
   // ─────────────────────────────────────────────────────────────
-  // CALCULS — lecture directe du localStorage
+  // CALCULS
   // ─────────────────────────────────────────────────────────────
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
@@ -275,9 +273,7 @@ export default function LingoDashboard() {
   const maxNetInGraph = Math.max(...graphData.map(d => d.net), 1);
   const leaveProgress = (stats.leaveTaken / stats.annualLeave) * 100;
 
-  // ─────────────────────────────────────────────────────────────
-  // LOADING — uniquement auth (rapide), jamais la sync
-  // ─────────────────────────────────────────────────────────────
+  // LOADING
   if (authLoading) {
     return (
       <div className="h-screen bg-[#0a0a0a] flex items-center justify-center">
@@ -339,7 +335,6 @@ export default function LingoDashboard() {
           </Link>
         </nav>
         <div className="mt-auto border-t border-white/10 p-4 space-y-4">
-          {/* Indicateur sync discret */}
           <div className="px-2 flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full transition-all ${isSyncing ? 'bg-blue-400 animate-pulse' : isOffline ? 'bg-orange-400' : 'bg-green-500'}`} />
             <span className="text-[10px] text-gray-600 uppercase font-bold tracking-tighter">
@@ -358,11 +353,25 @@ export default function LingoDashboard() {
 
       {/* MAIN */}
       <main className="flex-1 overflow-y-auto">
+
+        {/* ── HEADER MOBILE — LINGO PAY cliquable pour recharger ── */}
         <div className="sticky top-0 z-30 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 p-4 lg:hidden">
           <div className="flex items-center justify-between">
-            <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-lg text-gray-400"><Menu size={24} /></button>
-            <h2 className="text-lg font-bold">Dashboard</h2>
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center font-bold text-xs">{userName.charAt(0)}</div>
+            <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-lg text-gray-400">
+              <Menu size={24} />
+            </button>
+
+            {/* LINGO PAY — clic = reload page */}
+            <button
+              onClick={() => window.location.reload()}
+              className="text-lg font-black italic bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent active:opacity-70 transition-opacity"
+            >
+              LINGO PAY
+            </button>
+
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center font-bold text-xs">
+              {userName.charAt(0)}
+            </div>
           </div>
         </div>
 
