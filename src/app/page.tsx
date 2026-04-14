@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { 
   LayoutDashboard, Calendar, Settings, Wallet, Clock, TrendingUp, Moon,
   RefreshCw, Target, ChevronLeft, ChevronRight, Sparkles, X, BarChart3,
-  Trophy, Menu, Umbrella, Gift, Eye, EyeOff
+  Trophy, Menu, Umbrella, Gift, Eye, EyeOff, Info
 } from 'lucide-react';
 import { supabase } from '@/utils/supabase';
 
@@ -18,6 +18,113 @@ interface WorkEntry {
 }
 interface MonthHistory { label: string; net: number; isCurrent: boolean; }
 
+// ─────────────────────────────────────────────────────────────
+// COMPOSANT GUIDE POPUP
+// ─────────────────────────────────────────────────────────────
+function GuideModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="relative w-full max-w-lg bg-[#111] border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+
+        {/* Bande décorative en haut */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-600" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500/15 rounded-xl border border-blue-500/25">
+              <Info size={20} className="text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black italic bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                Guide Rapide
+              </h2>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Comment utiliser LingoPay ?</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-gray-500 hover:text-white hover:bg-white/10 border border-white/5 transition-all active:scale-95"
+            aria-label="Fermer le guide"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Contenu */}
+        <div className="px-6 pb-6 space-y-4 mt-2">
+
+          {/* Étape 1 */}
+          <div className="flex gap-4 p-4 rounded-2xl bg-white/4 border border-white/8 hover:border-blue-500/20 transition-colors">
+            <div className="shrink-0 w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+              <Settings size={16} className="text-blue-400" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-bold text-white mb-0.5">
+                1. Configure tes réglages <span className="text-gray-500">⚙️</span>
+              </p>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Commence par renseigner ton <span className="text-blue-400 font-semibold">taux horaire</span>, ton contrat, tes majorations de nuit, etc. dans les <span className="text-blue-400 font-semibold">Paramètres</span>. C'est la base pour que l'appli puisse faire les calculs.
+              </p>
+            </div>
+          </div>
+
+          {/* Étape 2 */}
+          <div className="flex gap-4 p-4 rounded-2xl bg-white/4 border border-white/8 hover:border-cyan-500/20 transition-colors">
+            <div className="shrink-0 w-9 h-9 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center">
+              <Calendar size={16} className="text-cyan-400" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-bold text-white mb-0.5">
+                2. Ajoute tes heures <span className="text-gray-500">📅</span>
+              </p>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Dans le <span className="text-cyan-400 font-semibold">Planning</span>, clique sur le jour pour entrer tes heures de début et de fin. LingoPay calcule automatiquement la durée, les primes de nuit et les bonus fériés.
+              </p>
+            </div>
+          </div>
+
+          {/* Étape 3 */}
+          <div className="flex gap-4 p-4 rounded-2xl bg-white/4 border border-white/8 hover:border-purple-500/20 transition-colors">
+            <div className="shrink-0 w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center">
+              <TrendingUp size={16} className="text-purple-400" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-bold text-white mb-0.5">
+                3. Suis ta progression <span className="text-gray-500">📈</span>
+              </p>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Le <span className="text-purple-400 font-semibold">Dashboard</span> affiche ton gain cumulé du mois, tes primes, ton objectif net et l'historique de tes revenus. Utilise le <span className="text-purple-400 font-semibold">Simulateur</span> pour tester l'impact d'un shift supplémentaire.
+              </p>
+            </div>
+          </div>
+
+          {/* Footer bouton */}
+          <button
+            onClick={onClose}
+            className="w-full mt-2 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-black text-sm uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all hover:opacity-90"
+          >
+            C'est parti ! 🚀
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: scale(0.96); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        .animate-fade-in > div {
+          animation: fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD PRINCIPAL
+// ─────────────────────────────────────────────────────────────
 export default function LingoDashboard() {
   // --- AUTH ---
   const [user, setUser] = useState<any>(null);
@@ -32,6 +139,25 @@ export default function LingoDashboard() {
   const syncDoneRef = useRef(false);
   const [dataReady, setDataReady] = useState(false);
 
+  // --- GUIDE ---
+  const GUIDE_KEY = 'lingo_guide_seen';
+  const [showGuide, setShowGuide] = useState(false);
+
+  // Ouvre le guide à la première connexion (après chargement auth)
+  useEffect(() => {
+    if (user && !authLoading) {
+      const alreadySeen = localStorage.getItem(GUIDE_KEY);
+      if (!alreadySeen) setShowGuide(true);
+    }
+  }, [user, authLoading]);
+
+  const closeGuide = () => {
+    localStorage.setItem(GUIDE_KEY, 'true');
+    setShowGuide(false);
+  };
+
+  const openGuide = () => setShowGuide(true);
+
   // --- DASHBOARD ---
   const [activeTab, setActiveTab] = useState('dashboard');
   const [displayDecimal, setDisplayDecimal] = useState(false);
@@ -44,7 +170,6 @@ export default function LingoDashboard() {
   const [historyRange, setHistoryRange] = useState(3);
   const [graphData, setGraphData] = useState<MonthHistory[]>([]);
 
-  // Mobile active stat card (0=base, 1=nuit, 2=feries, 3=conges)
   const [mobileActiveCard, setMobileActiveCard] = useState(0);
 
   const [stats, setStats] = useState({
@@ -399,9 +524,15 @@ export default function LingoDashboard() {
     }
   ];
 
-  // DASHBOARD
+  // ─────────────────────────────────────────────────────────────
+  // RENDER DASHBOARD
+  // ─────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden">
+
+      {/* GUIDE POPUP */}
+      {showGuide && <GuideModal onClose={closeGuide} />}
+
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
       {/* SIDEBAR */}
@@ -448,9 +579,14 @@ export default function LingoDashboard() {
             >
               LINGO PAY
             </button>
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center font-bold text-xs">
-              {userName.charAt(0)}
-            </div>
+            {/* Icône Info (mobile header) */}
+            <button
+              onClick={openGuide}
+              className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-blue-400 transition-colors"
+              aria-label="Ouvrir le guide"
+            >
+              <Info size={20} />
+            </button>
           </div>
         </div>
 
@@ -482,6 +618,14 @@ export default function LingoDashboard() {
               </button>
               <button onClick={() => setDisplayDecimal(!displayDecimal)} className="flex-1 lg:flex-initial flex items-center justify-center gap-2 px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold uppercase tracking-wider text-gray-400">
                 <RefreshCw size={12} className={displayDecimal ? "text-blue-400" : ""} /> {displayDecimal ? "Comptable" : "Réel"}
+              </button>
+              {/* Icône Info (desktop) */}
+              <button
+                onClick={openGuide}
+                className="hidden lg:flex w-10 h-10 items-center justify-center bg-white/5 border border-white/10 rounded-full text-gray-400 hover:text-blue-400 hover:border-blue-500/40 hover:bg-blue-500/10 transition-all"
+                aria-label="Ouvrir le guide"
+              >
+                <Info size={18} />
               </button>
               <div className="hidden lg:flex w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full items-center justify-center font-bold uppercase">{userName.charAt(0)}</div>
             </div>
@@ -517,7 +661,7 @@ export default function LingoDashboard() {
             </div>
           )}
 
-          {/* ── DESKTOP: grille 4 colonnes (inchangée) ── */}
+          {/* ── DESKTOP: grille 4 colonnes ── */}
           <div className="hidden lg:grid grid-cols-4 gap-6 mb-8">
             <StatCard title={showNet ? "Base Nette" : "Base Brute"} value={`${(showNet ? baseNet : stats.baseSalary).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Wallet className={showNet ? "text-green-400" : "text-blue-400"} />} label={showNet ? `Après ${stats.socialChargesRate}% charges` : "Salaire fixe"} onSwitch={() => setShowNet(!showNet)} isNet={showNet} />
             <StatCard title="Primes de Nuit" value={`${(showNet ? toNet((stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus) - toNet(stats.totalHoursFinancial * stats.hourlyRate) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Moon className="text-blue-400" />} label={`${fmt(stats.nightHours)} majorées`} />
@@ -535,7 +679,6 @@ export default function LingoDashboard() {
 
           {/* ── MOBILE: 4 icônes + bloc actif ── */}
           <div className="lg:hidden mb-6">
-            {/* Rangée d'icônes */}
             <div className="grid grid-cols-4 gap-2 mb-4">
               {mobileCards.map((card, idx) => (
                 <button
@@ -551,7 +694,6 @@ export default function LingoDashboard() {
                 </button>
               ))}
             </div>
-            {/* Bloc de contenu actif */}
             <div className="transition-all duration-200">
               {mobileCards[mobileActiveCard].content}
             </div>
