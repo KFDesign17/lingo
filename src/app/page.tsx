@@ -27,7 +27,6 @@ export default function LingoDashboard() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
 
-  // Sync discrète — ne bloque jamais l'affichage
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const syncDoneRef = useRef(false);
@@ -44,6 +43,9 @@ export default function LingoDashboard() {
   const [simData, setSimData] = useState({ start: "22:00", end: "06:00" });
   const [historyRange, setHistoryRange] = useState(3);
   const [graphData, setGraphData] = useState<MonthHistory[]>([]);
+
+  // Mobile active stat card (0=base, 1=nuit, 2=feries, 3=conges)
+  const [mobileActiveCard, setMobileActiveCard] = useState(0);
 
   const [stats, setStats] = useState({
     hourlyRate: 0, contractHours: 0, baseSalary: 0,
@@ -317,6 +319,86 @@ export default function LingoDashboard() {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // MOBILE STAT CARDS DATA
+  // ─────────────────────────────────────────────────────────────
+  const mobileCards = [
+    {
+      icon: <Wallet size={20} className={showNet ? "text-green-400" : "text-blue-400"} />,
+      activeColor: showNet ? 'border-green-500/60 bg-green-500/10' : 'border-blue-500/60 bg-blue-500/10',
+      content: (
+        <div className="border p-4 rounded-2xl bg-[#111] border-white/10 text-left">
+          <div className="flex justify-between items-start mb-3">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/5 w-fit">
+              <Wallet className={showNet ? "text-green-400" : "text-blue-400"} size={18} />
+            </div>
+            <button onClick={() => setShowNet(!showNet)} className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase transition-all ${showNet ? 'bg-green-500/20 border-green-500/40 text-green-400' : 'bg-white/5 border-white/10 text-gray-400'}`}>
+              <RefreshCw size={10} /> {showNet ? "Net" : "Brut"}
+            </button>
+          </div>
+          <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">{showNet ? "Base Nette" : "Base Brute"}</p>
+          <h4 className="text-xl font-bold">{(showNet ? baseNet : stats.baseSalary).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</h4>
+          <p className="text-[10px] text-gray-500 mt-2 italic">{showNet ? `Après ${stats.socialChargesRate}% charges` : "Salaire fixe"}</p>
+        </div>
+      )
+    },
+    {
+      icon: <Moon size={20} className="text-blue-400" />,
+      activeColor: 'border-blue-500/60 bg-blue-500/10',
+      content: (
+        <div className="border p-4 rounded-2xl bg-[#111] border-white/10 text-left">
+          <div className="mb-3">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/5 w-fit">
+              <Moon className="text-blue-400" size={18} />
+            </div>
+          </div>
+          <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Primes de Nuit</p>
+          <h4 className="text-xl font-bold">
+            {(showNet ? toNet((stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus) - toNet(stats.totalHoursFinancial * stats.hourlyRate) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+          </h4>
+          <p className="text-[10px] text-gray-500 mt-2 italic">{fmt(stats.nightHours)} majorées</p>
+        </div>
+      )
+    },
+    {
+      icon: <Gift size={20} className="text-pink-400" />,
+      activeColor: 'border-pink-500/60 bg-pink-500/10',
+      content: (
+        <div className="border p-4 rounded-2xl bg-[#111] border-white/10 text-left">
+          <div className="mb-3">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/5 w-fit">
+              <Gift className="text-pink-400" size={18} />
+            </div>
+          </div>
+          <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Bonus Fériés</p>
+          <h4 className="text-xl font-bold">
+            {(showNet ? toNet(stats.holidayBonus) : stats.holidayBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+          </h4>
+          <p className="text-[10px] text-gray-500 mt-2 italic">{fmt(stats.holidayHours)} à +{stats.holidayRate}%</p>
+        </div>
+      )
+    },
+    {
+      icon: <Umbrella size={20} className="text-orange-400" />,
+      activeColor: 'border-orange-500/60 bg-orange-500/10',
+      content: (
+        <div className="border p-4 rounded-2xl bg-[#111] border-white/10 text-left">
+          <div className="mb-3">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/5 w-fit">
+              <Umbrella className="text-orange-400" size={18} />
+            </div>
+          </div>
+          <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Congés Payés</p>
+          <h4 className="text-xl font-bold">{stats.leaveRemaining} jours</h4>
+          <div className="mt-3 bg-white/5 rounded-full h-2 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} / {stats.annualLeave} pris</p>
+        </div>
+      )
+    }
+  ];
+
   // DASHBOARD
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden">
@@ -354,21 +436,18 @@ export default function LingoDashboard() {
       {/* MAIN */}
       <main className="flex-1 overflow-y-auto">
 
-        {/* ── HEADER MOBILE — LINGO PAY cliquable pour recharger ── */}
+        {/* HEADER MOBILE */}
         <div className="sticky top-0 z-30 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-white/10 p-4 lg:hidden">
           <div className="flex items-center justify-between">
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-white/5 rounded-lg text-gray-400">
               <Menu size={24} />
             </button>
-
-            {/* LINGO PAY — clic = reload page */}
             <button
               onClick={() => window.location.reload()}
               className="text-lg font-black italic bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent active:opacity-70 transition-opacity"
             >
               LINGO PAY
             </button>
-
             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center font-bold text-xs">
               {userName.charAt(0)}
             </div>
@@ -438,7 +517,8 @@ export default function LingoDashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
+          {/* ── DESKTOP: grille 4 colonnes (inchangée) ── */}
+          <div className="hidden lg:grid grid-cols-4 gap-6 mb-8">
             <StatCard title={showNet ? "Base Nette" : "Base Brute"} value={`${(showNet ? baseNet : stats.baseSalary).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Wallet className={showNet ? "text-green-400" : "text-blue-400"} />} label={showNet ? `Après ${stats.socialChargesRate}% charges` : "Salaire fixe"} onSwitch={() => setShowNet(!showNet)} isNet={showNet} />
             <StatCard title="Primes de Nuit" value={`${(showNet ? toNet((stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus) - toNet(stats.totalHoursFinancial * stats.hourlyRate) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Moon className="text-blue-400" />} label={`${fmt(stats.nightHours)} majorées`} />
             <StatCard title="Bonus Fériés" value={`${(showNet ? toNet(stats.holidayBonus) : stats.holidayBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Gift className="text-pink-400" />} label={`${fmt(stats.holidayHours)} à +${stats.holidayRate}%`} />
@@ -450,6 +530,30 @@ export default function LingoDashboard() {
                 <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }} />
               </div>
               <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} / {stats.annualLeave} pris</p>
+            </div>
+          </div>
+
+          {/* ── MOBILE: 4 icônes + bloc actif ── */}
+          <div className="lg:hidden mb-6">
+            {/* Rangée d'icônes */}
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {mobileCards.map((card, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setMobileActiveCard(idx)}
+                  className={`flex items-center justify-center p-3 rounded-xl border transition-all active:scale-95 ${
+                    mobileActiveCard === idx
+                      ? card.activeColor
+                      : 'bg-white/5 border-white/10'
+                  }`}
+                >
+                  {card.icon}
+                </button>
+              ))}
+            </div>
+            {/* Bloc de contenu actif */}
+            <div className="transition-all duration-200">
+              {mobileCards[mobileActiveCard].content}
             </div>
           </div>
 
