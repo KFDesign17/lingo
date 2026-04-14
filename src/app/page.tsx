@@ -23,23 +23,34 @@ interface MonthHistory { label: string; net: number; isCurrent: boolean; }
 // ─────────────────────────────────────────────────────────────
 function GuideModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg bg-[#111] border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
 
-        {/* Bande décorative en haut */}
-        <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-600" />
+      {/* Clic backdrop pour fermer */}
+      <div className="absolute inset-0" onClick={onClose} />
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-3">
+      {/* Sheet qui remonte depuis le bas sur mobile, centré sur desktop */}
+      <div className="relative w-full sm:max-w-lg bg-[#111] border border-white/10 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col"
+           style={{ maxHeight: '80vh' }}>
+
+        {/* Barre décorative top */}
+        <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-600 rounded-t-3xl shrink-0" />
+
+        {/* Handle drag (mobile) */}
+        <div className="flex justify-center pt-2 sm:hidden shrink-0">
+          <div className="w-10 h-1 rounded-full bg-white/20" />
+        </div>
+
+        {/* Header fixe */}
+        <div className="flex items-center justify-between px-5 pt-3 pb-2 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/15 rounded-xl border border-blue-500/25">
-              <Info size={20} className="text-blue-400" />
+            <div className="p-1.5 bg-blue-500/15 rounded-xl border border-blue-500/25">
+              <Info size={16} className="text-blue-400" />
             </div>
             <div>
-              <h2 className="text-lg font-black italic bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+              <h2 className="text-sm font-black italic bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
                 Guide Rapide
               </h2>
-              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Comment utiliser LingoPay ?</p>
+              <p className="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Comment utiliser LingoPay ?</p>
             </div>
           </div>
           <button
@@ -47,75 +58,67 @@ function GuideModal({ onClose }: { onClose: () => void }) {
             className="p-2 rounded-xl text-gray-500 hover:text-white hover:bg-white/10 border border-white/5 transition-all active:scale-95"
             aria-label="Fermer le guide"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        {/* Contenu */}
-        <div className="px-6 pb-6 space-y-4 mt-2">
+        {/* Contenu scrollable */}
+        <div className="overflow-y-auto flex-1 px-5 pb-6 space-y-2.5">
 
-          {/* Étape 1 */}
-          <div className="flex gap-4 p-4 rounded-2xl bg-white/4 border border-white/8 hover:border-blue-500/20 transition-colors">
-            <div className="shrink-0 w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-              <Settings size={16} className="text-blue-400" />
+          <div className="flex gap-3 p-3 rounded-2xl bg-white/4 border border-white/8">
+            <div className="shrink-0 w-8 h-8 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+              <Settings size={14} className="text-blue-400" />
             </div>
             <div className="text-left">
-              <p className="text-sm font-bold text-white mb-0.5">
-                1. Configure tes réglages <span className="text-gray-500">⚙️</span>
-              </p>
+              <p className="text-sm font-bold text-white mb-0.5">1. Configure tes réglages ⚙️</p>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Commence par renseigner ton <span className="text-blue-400 font-semibold">taux horaire</span>, ton contrat, tes majorations de nuit, etc. dans les <span className="text-blue-400 font-semibold">Paramètres</span>. C'est la base pour que l'appli puisse faire les calculs.
+                Renseigne ton <span className="text-blue-400 font-semibold">taux horaire</span>, ton contrat et tes majorations de nuit dans les <span className="text-blue-400 font-semibold">Paramètres</span>.
               </p>
             </div>
           </div>
 
-          {/* Étape 2 */}
-          <div className="flex gap-4 p-4 rounded-2xl bg-white/4 border border-white/8 hover:border-cyan-500/20 transition-colors">
-            <div className="shrink-0 w-9 h-9 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center">
-              <Calendar size={16} className="text-cyan-400" />
+          <div className="flex gap-3 p-3 rounded-2xl bg-white/4 border border-white/8">
+            <div className="shrink-0 w-8 h-8 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center">
+              <Calendar size={14} className="text-cyan-400" />
             </div>
             <div className="text-left">
-              <p className="text-sm font-bold text-white mb-0.5">
-                2. Ajoute tes heures <span className="text-gray-500">📅</span>
-              </p>
+              <p className="text-sm font-bold text-white mb-0.5">2. Ajoute tes heures 📅</p>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Dans le <span className="text-cyan-400 font-semibold">Planning</span>, clique sur le jour pour entrer tes heures de début et de fin. LingoPay calcule automatiquement la durée, les primes de nuit et les bonus fériés.
+                Dans le <span className="text-cyan-400 font-semibold">Planning</span>, clique sur un jour pour entrer tes heures. Les primes et bonus sont calculés automatiquement.
               </p>
             </div>
           </div>
 
-          {/* Étape 3 */}
-          <div className="flex gap-4 p-4 rounded-2xl bg-white/4 border border-white/8 hover:border-purple-500/20 transition-colors">
-            <div className="shrink-0 w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center">
-              <TrendingUp size={16} className="text-purple-400" />
+          <div className="flex gap-3 p-3 rounded-2xl bg-white/4 border border-white/8">
+            <div className="shrink-0 w-8 h-8 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center">
+              <TrendingUp size={14} className="text-purple-400" />
             </div>
             <div className="text-left">
-              <p className="text-sm font-bold text-white mb-0.5">
-                3. Suis ta progression <span className="text-gray-500">📈</span>
-              </p>
+              <p className="text-sm font-bold text-white mb-0.5">3. Suis ta progression 📈</p>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Le <span className="text-purple-400 font-semibold">Dashboard</span> affiche ton gain cumulé du mois, tes primes, ton objectif net et l'historique de tes revenus. Utilise le <span className="text-purple-400 font-semibold">Simulateur</span> pour tester l'impact d'un shift supplémentaire.
+                Le <span className="text-purple-400 font-semibold">Dashboard</span> affiche ton gain cumulé. Utilise le <span className="text-purple-400 font-semibold">Simulateur</span> pour tester un shift supplémentaire.
               </p>
             </div>
           </div>
 
-          {/* Footer bouton */}
+          {/* Bouton toujours visible dans le scroll */}
           <button
             onClick={onClose}
-            className="w-full mt-2 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-black text-sm uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all hover:opacity-90"
+            className="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-black text-sm uppercase tracking-widest active:scale-95 transition-all hover:opacity-90"
           >
             C'est parti ! 🚀
           </button>
+
         </div>
       </div>
 
       <style>{`
-        @keyframes fade-in {
-          from { opacity: 0; transform: scale(0.96); }
-          to   { opacity: 1; transform: scale(1); }
+        @keyframes slide-up {
+          from { opacity: 0; transform: translateY(40px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        .animate-fade-in > div {
-          animation: fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+        .animate-fade-in > div:last-child {
+          animation: slide-up 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
       `}</style>
     </div>
@@ -143,7 +146,6 @@ export default function LingoDashboard() {
   const GUIDE_KEY = 'lingo_guide_seen';
   const [showGuide, setShowGuide] = useState(false);
 
-  // Ouvre le guide à la première connexion (après chargement auth)
   useEffect(() => {
     if (user && !authLoading) {
       const alreadySeen = localStorage.getItem(GUIDE_KEY);
@@ -169,7 +171,6 @@ export default function LingoDashboard() {
   const [simData, setSimData] = useState({ start: "22:00", end: "06:00" });
   const [historyRange, setHistoryRange] = useState(3);
   const [graphData, setGraphData] = useState<MonthHistory[]>([]);
-
   const [mobileActiveCard, setMobileActiveCard] = useState(0);
 
   const [stats, setStats] = useState({
@@ -189,28 +190,22 @@ export default function LingoDashboard() {
     if (!navigator.onLine) { setIsOffline(true); return; }
     setIsOffline(false);
     setIsSyncing(true);
-
     try {
       const localTs = localStorage.getItem('lingo_updated_at');
       const localTimestamp = localTs ? new Date(localTs).getTime() : 0;
       const localPlanning = localStorage.getItem('lingo_planning');
       const localSettings = localStorage.getItem('lingo_settings');
-
       const { data: cloudData, error } = await supabase
         .from('user_profiles').select('*').eq('id', userId).single();
-
       const cloudTimestamp = cloudData?.updated_at ? new Date(cloudData.updated_at).getTime() : 0;
-
       if (!cloudData || error) {
         if (localPlanning || localSettings) await pushToCloud(userId, localPlanning, localSettings);
       } else if (localTimestamp > cloudTimestamp) {
         await pushToCloud(userId, localPlanning, localSettings);
       } else if (cloudTimestamp > localTimestamp) {
-        pullFromCloud(cloudData);
-        setDataReady(prev => !prev);
+        pullFromCloud(cloudData); setDataReady(prev => !prev);
       } else if (cloudData.planning_data || cloudData.settings_data) {
-        pullFromCloud(cloudData);
-        setDataReady(prev => !prev);
+        pullFromCloud(cloudData); setDataReady(prev => !prev);
       }
     } catch (err) {
       console.error('Erreur sync background :', err);
@@ -257,7 +252,6 @@ export default function LingoDashboard() {
       if (currentUser && !syncDoneRef.current) syncInBackground(currentUser.id);
     };
     initSession();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
@@ -288,17 +282,14 @@ export default function LingoDashboard() {
 
   useEffect(() => {
     if (!user) return;
-
     const savedSettings = localStorage.getItem('lingo_settings');
     const savedPlanning = localStorage.getItem('lingo_planning');
-
     let rate = 0, hours = 0, shifts: NightShift[] = [];
     let charges = 21.9, fixed = 0, tax = 0, target = 0;
     let totalH = 0, totalHFinancial = 0, totalNightH = 0, totalBonus = 0;
     let totalHolidayH = 0, totalHolidayBonus = 0;
     let name = user.email?.split('@')[0] || "Utilisateur";
     let annualLeave = 25, leaveTaken = 0, leaveDayValue = 7, holidayRate = 100;
-
     if (savedSettings) {
       const p = JSON.parse(savedSettings);
       rate = p.hourlyRate || 0; hours = p.contractHours || 0;
@@ -308,12 +299,10 @@ export default function LingoDashboard() {
       annualLeave = p.annualLeave || 25; leaveDayValue = p.leaveDayValue || 7; holidayRate = p.holidayRate || 100;
     }
     setUserName(name);
-
     if (savedPlanning) {
       try {
         const entries: WorkEntry[] = JSON.parse(savedPlanning);
         const selMonth = currentDate.getMonth(), selYear = currentDate.getFullYear();
-
         entries.forEach(entry => {
           const d = new Date(entry.date);
           const isSel = d.getMonth() === selMonth && d.getFullYear() === selYear;
@@ -326,7 +315,6 @@ export default function LingoDashboard() {
             });
           }
         });
-
         const tempGraph: MonthHistory[] = [];
         for (let i = historyRange; i >= 0; i--) {
           const td = new Date(currentDate.getFullYear(), currentDate.getMonth() - i);
@@ -345,7 +333,6 @@ export default function LingoDashboard() {
         setGraphData(tempGraph);
       } catch (e) { console.error(e); }
     }
-
     setStats({
       hourlyRate: rate, contractHours: hours, baseSalary: rate * hours,
       totalHoursMonth: totalH, totalHoursFinancial: totalHFinancial,
@@ -530,7 +517,6 @@ export default function LingoDashboard() {
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white font-sans overflow-hidden">
 
-      {/* GUIDE POPUP */}
       {showGuide && <GuideModal onClose={closeGuide} />}
 
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
@@ -579,7 +565,6 @@ export default function LingoDashboard() {
             >
               LINGO PAY
             </button>
-            {/* Icône Info (mobile header) */}
             <button
               onClick={openGuide}
               className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-blue-400 transition-colors"
@@ -619,7 +604,6 @@ export default function LingoDashboard() {
               <button onClick={() => setDisplayDecimal(!displayDecimal)} className="flex-1 lg:flex-initial flex items-center justify-center gap-2 px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold uppercase tracking-wider text-gray-400">
                 <RefreshCw size={12} className={displayDecimal ? "text-blue-400" : ""} /> {displayDecimal ? "Comptable" : "Réel"}
               </button>
-              {/* Icône Info (desktop) */}
               <button
                 onClick={openGuide}
                 className="hidden lg:flex w-10 h-10 items-center justify-center bg-white/5 border border-white/10 rounded-full text-gray-400 hover:text-blue-400 hover:border-blue-500/40 hover:bg-blue-500/10 transition-all"
@@ -685,9 +669,7 @@ export default function LingoDashboard() {
                   key={idx}
                   onClick={() => setMobileActiveCard(idx)}
                   className={`flex items-center justify-center p-3 rounded-xl border transition-all active:scale-95 ${
-                    mobileActiveCard === idx
-                      ? card.activeColor
-                      : 'bg-white/5 border-white/10'
+                    mobileActiveCard === idx ? card.activeColor : 'bg-white/5 border-white/10'
                   }`}
                 >
                   {card.icon}
