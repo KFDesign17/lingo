@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { 
   LayoutDashboard, Calendar, Settings, Wallet, Clock, TrendingUp, Moon,
   RefreshCw, Target, ChevronLeft, ChevronRight, Sparkles, X, BarChart3,
-  Trophy, Menu, Umbrella, Gift, Eye, EyeOff, Info
+  Trophy, Menu, Umbrella, Gift, Eye, EyeOff, Info, Plus, Trash2
 } from 'lucide-react';
 import { supabase } from '@/utils/supabase';
 
@@ -168,7 +168,7 @@ export default function LingoDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [userName, setUserName] = useState("Utilisateur");
   const [isSimMode, setIsSimMode] = useState(false);
-  const [simData, setSimData] = useState({ start: "22:00", end: "06:00" });
+  const [simSlots, setSimSlots] = useState([{ start: "22:00", end: "06:00" }]);
   const [historyRange, setHistoryRange] = useState(3);
   const [graphData, setGraphData] = useState<MonthHistory[]>([]);
   const [mobileActiveCard, setMobileActiveCard] = useState(0);
@@ -374,8 +374,10 @@ export default function LingoDashboard() {
   const progressBrut = (stats.totalHoursMonth * stats.hourlyRate) + stats.nightBonus + stats.holidayBonus;
   const progressNet = toNet(progressBrut);
   const baseNet = toNet(stats.baseSalary);
-  const sim = calcSession(simData.start, simData.end, stats.hourlyRate, stats.rawShifts, false, stats.holidayRate);
-  const simNet = toNet(currentTotalBrut + sim.h * stats.hourlyRate + sim.b) - currentTotalNet;
+  const simResults = simSlots.map(slot => calcSession(slot.start, slot.end, stats.hourlyRate, stats.rawShifts, false, stats.holidayRate));
+  const simTotalH = simResults.reduce((acc, r) => acc + r.h, 0);
+  const simTotalB = simResults.reduce((acc, r) => acc + r.b, 0);
+  const simNet = toNet(currentTotalBrut + simTotalH * stats.hourlyRate + simTotalB) - currentTotalNet;
   const isContractMet = stats.totalHoursMonth >= stats.contractHours;
   const hasTarget = stats.targetNet > 0;
   const financialTarget = hasTarget ? stats.targetNet : baseNet;
@@ -627,20 +629,35 @@ export default function LingoDashboard() {
                 </div>
                 <button onClick={() => setIsSimMode(false)} className="text-gray-500 hover:text-white p-1"><X size={20} /></button>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6">
-                <div className="space-y-2 text-left">
-                  <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Début</label>
-                  <input type="time" value={simData.start} onChange={e => setSimData({ ...simData, start: e.target.value })} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
-                </div>
-                <div className="space-y-2 text-left">
-                  <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Fin</label>
-                  <input type="time" value={simData.end} onChange={e => setSimData({ ...simData, end: e.target.value })} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
-                </div>
-                <div className="col-span-2 bg-[#0a0a0a]/50 rounded-2xl p-4 border border-purple-500/20 text-left">
-                  <p className="text-[10px] font-black text-purple-400/80 uppercase mb-1">Impact Net</p>
-                  <p className="text-xl lg:text-2xl font-black text-white">+{simNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
-                  <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">{fmt(sim.h)} total</p>
-                </div>
+              <div className="space-y-3 mb-3">
+                {simSlots.map((slot, idx) => (
+                  <div key={idx} className="flex items-end gap-2 lg:gap-3">
+                    <div className="flex-1 space-y-2 text-left">
+                      <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Début</label>
+                      <input type="time" value={slot.start} onChange={e => { const next = [...simSlots]; next[idx] = { ...next[idx], start: e.target.value }; setSimSlots(next); }} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
+                    </div>
+                    <div className="flex-1 space-y-2 text-left">
+                      <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Fin</label>
+                      <input type="time" value={slot.end} onChange={e => { const next = [...simSlots]; next[idx] = { ...next[idx], end: e.target.value }; setSimSlots(next); }} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
+                    </div>
+                    {simSlots.length > 1 && (
+                      <button onClick={() => setSimSlots(simSlots.filter((_, i) => i !== idx))} className="mb-0.5 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all active:scale-95">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setSimSlots([...simSlots, { start: "22:00", end: "06:00" }])}
+                className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-purple-500/40 text-purple-400 text-[11px] font-bold uppercase tracking-widest hover:bg-purple-500/10 transition-all active:scale-95"
+              >
+                <Plus size={14} /> Ajouter un créneau
+              </button>
+              <div className="bg-[#0a0a0a]/50 rounded-2xl p-4 border border-purple-500/20 text-left">
+                <p className="text-[10px] font-black text-purple-400/80 uppercase mb-1">Impact Net Total</p>
+                <p className="text-xl lg:text-2xl font-black text-white">+{simNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">{fmt(simTotalH)} total • {simSlots.length} créneau{simSlots.length > 1 ? 'x' : ''}</p>
               </div>
             </div>
           )}
