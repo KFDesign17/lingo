@@ -657,21 +657,16 @@ export default function LingoDashboard() {
               >
                 <Plus size={14} /> Ajouter un créneau
               </button>
-              <div className="grid grid-cols-3 gap-2 lg:gap-3">
+              <div className="grid grid-cols-2 gap-2 lg:gap-3">
                 <div className="bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border border-purple-500/20 text-left">
-                  <p className="text-[9px] lg:text-[10px] font-black text-purple-400/80 uppercase mb-1">Impact Net</p>
-                  <p className="text-base lg:text-xl font-black text-white">+{simNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
+                  <p className="text-[9px] lg:text-[10px] font-black text-purple-400/80 uppercase mb-1">Impact {showNet ? 'Net' : 'Brut'}</p>
+                  <p className="text-base lg:text-xl font-black text-white">+{(showNet ? simNet : simBrut).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
                   <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">{fmt(simTotalH)} • {simSlots.length} créneau{simSlots.length > 1 ? 'x' : ''}</p>
                 </div>
-                <div className="bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border border-blue-500/20 text-left">
-                  <p className="text-[9px] lg:text-[10px] font-black text-blue-400/80 uppercase mb-1">Total Brut</p>
-                  <p className="text-base lg:text-xl font-black text-white">{simProjectedBrut.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
-                  <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">Projeté</p>
-                </div>
-                <div className="bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border border-green-500/20 text-left">
-                  <p className="text-[9px] lg:text-[10px] font-black text-green-400/80 uppercase mb-1">Total Net</p>
-                  <p className="text-base lg:text-xl font-black text-white">{simProjectedNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
-                  <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">Projeté</p>
+                <div className={`bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border text-left ${showNet ? 'border-green-500/20' : 'border-blue-500/20'}`}>
+                  <p className={`text-[9px] lg:text-[10px] font-black uppercase mb-1 ${showNet ? 'text-green-400/80' : 'text-blue-400/80'}`}>Total {showNet ? 'Net' : 'Brut'} Projeté</p>
+                  <p className="text-base lg:text-xl font-black text-white">{(showNet ? simProjectedNet : simProjectedBrut).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
+                  <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">Simulation</p>
                 </div>
               </div>
             </div>
