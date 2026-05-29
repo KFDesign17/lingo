@@ -178,6 +178,7 @@ export default function LingoDashboard() {
     totalHoursMonth: 0, totalHoursFinancial: 0,
     nightHours: 0, nightBonus: 0,
     holidayHours: 0, holidayBonus: 0, holidayRate: 100,
+    complementaryHours: 0, complementaryBonus: 0, complementaryRate: 10,
     socialChargesRate: 21.9, fixedDeductions: 0, taxRate: 0, targetNet: 0,
     rawShifts: [] as NightShift[],
     annualLeave: 25, leaveTaken: 0, leaveRemaining: 25
@@ -289,7 +290,7 @@ export default function LingoDashboard() {
     let totalH = 0, totalHFinancial = 0, totalNightH = 0, totalBonus = 0;
     let totalHolidayH = 0, totalHolidayBonus = 0;
     let name = user.email?.split('@')[0] || "Utilisateur";
-    let annualLeave = 25, leaveTaken = 0, leaveDayValue = 7, holidayRate = 100;
+    let annualLeave = 25, leaveTaken = 0, leaveDayValue = 7, holidayRate = 100, complementaryRate = 10;
     if (savedSettings) {
       const p = JSON.parse(savedSettings);
       rate = p.hourlyRate || 0; hours = p.contractHours || 0;
@@ -297,6 +298,7 @@ export default function LingoDashboard() {
       fixed = p.fixedDeductions || 0; tax = p.taxRate || 0; target = p.targetNet || 0;
       if (p.userName) name = p.userName;
       annualLeave = p.annualLeave || 25; leaveDayValue = p.leaveDayValue || 7; holidayRate = p.holidayRate || 100;
+      complementaryRate = p.complementaryRate ?? 10;
     }
     setUserName(name);
     if (savedPlanning) {
@@ -333,11 +335,14 @@ export default function LingoDashboard() {
         setGraphData(tempGraph);
       } catch (e) { console.error(e); }
     }
+    const compH = Math.max(0, totalH - hours);
+    const compBonus = compH * rate * (complementaryRate / 100);
     setStats({
       hourlyRate: rate, contractHours: hours, baseSalary: rate * hours,
       totalHoursMonth: totalH, totalHoursFinancial: totalHFinancial,
       nightHours: totalNightH, nightBonus: totalBonus,
       holidayHours: totalHolidayH, holidayBonus: totalHolidayBonus, holidayRate,
+      complementaryHours: compH, complementaryBonus: compBonus, complementaryRate,
       socialChargesRate: charges, fixedDeductions: fixed, taxRate: tax, targetNet: target,
       rawShifts: shifts, annualLeave, leaveTaken, leaveRemaining: annualLeave - leaveTaken
     });
@@ -369,7 +374,7 @@ export default function LingoDashboard() {
     return `${h}h ${m.toString().padStart(2, '0')}min`;
   };
 
-  const currentTotalBrut = (stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus + stats.holidayBonus;
+  const currentTotalBrut = (stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus + stats.holidayBonus + stats.complementaryBonus;
   const currentTotalNet = toNet(currentTotalBrut);
   const progressBrut = (stats.totalHoursMonth * stats.hourlyRate) + stats.nightBonus + stats.holidayBonus;
   const progressNet = toNet(progressBrut);
@@ -511,6 +516,24 @@ export default function LingoDashboard() {
             <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }} />
           </div>
           <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} / {stats.annualLeave} pris</p>
+        </div>
+      )
+    },
+    {
+      icon: <TrendingUp size={20} className="text-cyan-400" />,
+      activeColor: 'border-cyan-500/60 bg-cyan-500/10',
+      content: (
+        <div className="border p-4 rounded-2xl bg-[#111] border-white/10 text-left">
+          <div className="mb-3">
+            <div className="p-2 bg-white/5 rounded-xl border border-white/5 w-fit">
+              <TrendingUp className="text-cyan-400" size={18} />
+            </div>
+          </div>
+          <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Heures Complémentaires</p>
+          <h4 className="text-xl font-bold">
+            {(showNet ? toNet(stats.complementaryBonus) : stats.complementaryBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+          </h4>
+          <p className="text-[10px] text-gray-500 mt-2 italic">{fmt(stats.complementaryHours)} à +{stats.complementaryRate}%</p>
         </div>
       )
     }
@@ -672,12 +695,13 @@ export default function LingoDashboard() {
             </div>
           )}
 
-          {/* ── DESKTOP: grille 4 colonnes ── */}
-          <div className="hidden lg:grid grid-cols-4 gap-6 mb-8">
+          {/* ── DESKTOP: grille 5 colonnes ── */}
+          <div className="hidden lg:grid grid-cols-5 gap-4 mb-8">
             <StatCard title={showNet ? "Base Nette" : "Base Brute"} value={`${(showNet ? baseNet : stats.baseSalary).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Wallet className={showNet ? "text-green-400" : "text-blue-400"} />} label={showNet ? `Après ${stats.socialChargesRate}% charges` : "Salaire fixe"} onSwitch={() => setShowNet(!showNet)} isNet={showNet} />
             <StatCard title="Primes de Nuit" value={`${(showNet ? toNet((stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus) - toNet(stats.totalHoursFinancial * stats.hourlyRate) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Moon className="text-blue-400" />} label={`${fmt(stats.nightHours)} majorées`} />
             <StatCard title="Bonus Fériés" value={`${(showNet ? toNet(stats.holidayBonus) : stats.holidayBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Gift className="text-pink-400" />} label={`${fmt(stats.holidayHours)} à +${stats.holidayRate}%`} />
-            <div className="border p-4 lg:p-6 rounded-2xl bg-[#111] border-white/10 text-left">
+            <StatCard title="Heures Complémentaires" value={`${(showNet ? toNet(stats.complementaryBonus) : stats.complementaryBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<TrendingUp className="text-cyan-400" />} label={`${fmt(stats.complementaryHours)} à +${stats.complementaryRate}%`} />
+            <div className="border p-4 lg:p-5 rounded-2xl bg-[#111] border-white/10 text-left">
               <div className="mb-3 lg:mb-4"><div className="p-2 lg:p-3 bg-white/5 rounded-xl border border-white/5 w-fit"><Umbrella className="text-orange-400" size={18} /></div></div>
               <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Congés Payés</p>
               <h4 className="text-xl lg:text-2xl font-bold">{stats.leaveRemaining} jours</h4>
@@ -690,7 +714,7 @@ export default function LingoDashboard() {
 
           {/* ── MOBILE: 4 icônes + bloc actif ── */}
           <div className="lg:hidden mb-6">
-            <div className="grid grid-cols-4 gap-2 mb-4">
+            <div className="grid grid-cols-5 gap-2 mb-4">
               {mobileCards.map((card, idx) => (
                 <button
                   key={idx}

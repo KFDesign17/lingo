@@ -12,6 +12,7 @@ interface UserSettings {
   hourlyRate: number;
   contractHours: number;
   mealAllowance: number;
+  complementaryRate: number;
   socialChargesRate: number;
   fixedDeductions: number;
   taxRate: number;
@@ -28,6 +29,7 @@ export default function SettingsPage() {
     hourlyRate: 12.50,
     contractHours: 151.67,
     mealAllowance: 0,
+    complementaryRate: 10,
     socialChargesRate: 22,
     fixedDeductions: 0,
     taxRate: 0,
@@ -136,6 +138,12 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <InputGroup label="Heures mensuelles" value={settings.contractHours} type="number" onChange={v => setSettings({ ...settings, contractHours: parseFloat(v) || 0 })} />
               <InputGroup label="Panier Repas (€)" value={settings.mealAllowance} type="number" onChange={v => setSettings({ ...settings, mealAllowance: parseFloat(v) || 0 })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <InputGroup label="Majoration HC (%)" value={settings.complementaryRate} type="number" onChange={v => setSettings({ ...settings, complementaryRate: parseFloat(v) || 0 })} />
+              <div className="space-y-2 text-left flex flex-col justify-end">
+                <p className="text-[10px] text-blue-400/70 italic pb-3">Heures au-delà du contrat<br/>(ex : +10% pour temps partiel)</p>
+              </div>
             </div>
           </div>
         </div>
@@ -265,6 +273,10 @@ export default function SettingsPage() {
                 <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
                   <span className="text-xs text-gray-300">Normal</span>
                   <span className="font-bold text-blue-400">{settings.hourlyRate.toFixed(2)}€/h</span>
+                </div>
+                <div className="flex justify-between items-center bg-blue-500/5 p-3 rounded-xl border border-blue-500/20">
+                  <span className="text-xs text-gray-300">Complémentaires (+{settings.complementaryRate}%)</span>
+                  <span className="font-bold text-blue-400">{(settings.hourlyRate * (1 + settings.complementaryRate / 100)).toFixed(2)}€/h</span>
                 </div>
                 <div className="flex justify-between items-center bg-pink-500/5 p-3 rounded-xl border border-pink-500/20">
                   <span className="text-xs text-gray-300">Férié (+{settings.holidayRate}%)</span>
