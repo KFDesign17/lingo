@@ -377,7 +377,10 @@ export default function LingoDashboard() {
   const simResults = simSlots.map(slot => calcSession(slot.start, slot.end, stats.hourlyRate, stats.rawShifts, false, stats.holidayRate));
   const simTotalH = simResults.reduce((acc, r) => acc + r.h, 0);
   const simTotalB = simResults.reduce((acc, r) => acc + r.b, 0);
-  const simNet = toNet(currentTotalBrut + simTotalH * stats.hourlyRate + simTotalB) - currentTotalNet;
+  const simBrut = simTotalH * stats.hourlyRate + simTotalB;
+  const simProjectedBrut = currentTotalBrut + simBrut;
+  const simProjectedNet = toNet(simProjectedBrut);
+  const simNet = simProjectedNet - currentTotalNet;
   const isContractMet = stats.totalHoursMonth >= stats.contractHours;
   const hasTarget = stats.targetNet > 0;
   const financialTarget = hasTarget ? stats.targetNet : baseNet;
@@ -654,10 +657,22 @@ export default function LingoDashboard() {
               >
                 <Plus size={14} /> Ajouter un créneau
               </button>
-              <div className="bg-[#0a0a0a]/50 rounded-2xl p-4 border border-purple-500/20 text-left">
-                <p className="text-[10px] font-black text-purple-400/80 uppercase mb-1">Impact Net Total</p>
-                <p className="text-xl lg:text-2xl font-black text-white">+{simNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
-                <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">{fmt(simTotalH)} total • {simSlots.length} créneau{simSlots.length > 1 ? 'x' : ''}</p>
+              <div className="grid grid-cols-3 gap-2 lg:gap-3">
+                <div className="bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border border-purple-500/20 text-left">
+                  <p className="text-[9px] lg:text-[10px] font-black text-purple-400/80 uppercase mb-1">Impact Net</p>
+                  <p className="text-base lg:text-xl font-black text-white">+{simNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
+                  <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">{fmt(simTotalH)} • {simSlots.length} créneau{simSlots.length > 1 ? 'x' : ''}</p>
+                </div>
+                <div className="bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border border-blue-500/20 text-left">
+                  <p className="text-[9px] lg:text-[10px] font-black text-blue-400/80 uppercase mb-1">Total Brut</p>
+                  <p className="text-base lg:text-xl font-black text-white">{simProjectedBrut.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
+                  <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">Projeté</p>
+                </div>
+                <div className="bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border border-green-500/20 text-left">
+                  <p className="text-[9px] lg:text-[10px] font-black text-green-400/80 uppercase mb-1">Total Net</p>
+                  <p className="text-base lg:text-xl font-black text-white">{simProjectedNet.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
+                  <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">Projeté</p>
+                </div>
               </div>
             </div>
           )}
