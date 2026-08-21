@@ -169,6 +169,8 @@ export default function LingoDashboard() {
   const [userName, setUserName] = useState("Utilisateur");
   const [isSimMode, setIsSimMode] = useState(false);
   const [simSlots, setSimSlots] = useState([{ start: "22:00", end: "06:00" }]);
+  const [simInputMode, setSimInputMode] = useState<'slots' | 'quick'>('slots');
+  const [simQuickHours, setSimQuickHours] = useState(24);
   const [historyRange, setHistoryRange] = useState(3);
   const [graphData, setGraphData] = useState<MonthHistory[]>([]);
   const [mobileActiveCard, setMobileActiveCard] = useState(0);
@@ -353,8 +355,8 @@ export default function LingoDashboard() {
   const progressNet = toNet(progressBrut);
   const baseNet = toNet(stats.baseSalary);
   const simResults = simSlots.map(slot => calcSession(slot.start, slot.end, stats.hourlyRate, stats.rawShifts, false, stats.holidayRate));
-  const simTotalH = simResults.reduce((acc, r) => acc + r.h, 0);
-  const simTotalB = simResults.reduce((acc, r) => acc + r.b, 0);
+  const simTotalH = simInputMode === 'quick' ? simQuickHours : simResults.reduce((acc, r) => acc + r.h, 0);
+  const simTotalB = simInputMode === 'quick' ? 0 : simResults.reduce((acc, r) => acc + r.b, 0);
   const simBrut = simTotalH * stats.hourlyRate + simTotalB;
   const simProjectedBrut = currentTotalBrut + simBrut;
   const simProjectedNet = toNet(simProjectedBrut);
@@ -634,36 +636,60 @@ export default function LingoDashboard() {
                 </div>
                 <button onClick={() => setIsSimMode(false)} className="text-gray-500 hover:text-white p-1"><X size={20} /></button>
               </div>
-              <div className="space-y-3 mb-3">
-                {simSlots.map((slot, idx) => (
-                  <div key={idx} className="flex items-end gap-2 lg:gap-3">
-                    <div className="flex-1 space-y-2 text-left">
-                      <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Début</label>
-                      <input type="time" value={slot.start} onChange={e => { const next = [...simSlots]; next[idx] = { ...next[idx], start: e.target.value }; setSimSlots(next); }} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
-                    </div>
-                    <div className="flex-1 space-y-2 text-left">
-                      <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Fin</label>
-                      <input type="time" value={slot.end} onChange={e => { const next = [...simSlots]; next[idx] = { ...next[idx], end: e.target.value }; setSimSlots(next); }} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
-                    </div>
-                    {simSlots.length > 1 && (
-                      <button onClick={() => setSimSlots(simSlots.filter((_, i) => i !== idx))} className="mb-0.5 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all active:scale-95">
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                ))}
+
+              <div className="flex gap-2 mb-4 bg-[#0a0a0a]/50 p-1 rounded-xl border border-white/5 w-fit">
+                <button onClick={() => setSimInputMode('slots')} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${simInputMode === 'slots' ? 'bg-purple-600 text-white' : 'text-gray-500'}`}>Créneaux</button>
+                <button onClick={() => setSimInputMode('quick')} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${simInputMode === 'quick' ? 'bg-purple-600 text-white' : 'text-gray-500'}`}>Heures rapides</button>
               </div>
-              <button
-                onClick={() => setSimSlots([...simSlots, { start: "22:00", end: "06:00" }])}
-                className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-purple-500/40 text-purple-400 text-[11px] font-bold uppercase tracking-widest hover:bg-purple-500/10 transition-all active:scale-95"
-              >
-                <Plus size={14} /> Ajouter un créneau
-              </button>
+
+              {simInputMode === 'slots' ? (
+                <>
+                  <div className="space-y-3 mb-3">
+                    {simSlots.map((slot, idx) => (
+                      <div key={idx} className="flex items-end gap-2 lg:gap-3">
+                        <div className="flex-1 space-y-2 text-left">
+                          <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Début</label>
+                          <input type="time" value={slot.start} onChange={e => { const next = [...simSlots]; next[idx] = { ...next[idx], start: e.target.value }; setSimSlots(next); }} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
+                        </div>
+                        <div className="flex-1 space-y-2 text-left">
+                          <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Fin</label>
+                          <input type="time" value={slot.end} onChange={e => { const next = [...simSlots]; next[idx] = { ...next[idx], end: e.target.value }; setSimSlots(next); }} style={{ colorScheme: 'dark' }} className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-3 py-3 text-sm focus:border-purple-500 outline-none" />
+                        </div>
+                        {simSlots.length > 1 && (
+                          <button onClick={() => setSimSlots(simSlots.filter((_, i) => i !== idx))} className="mb-0.5 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all active:scale-95">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setSimSlots([...simSlots, { start: "22:00", end: "06:00" }])}
+                    className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-purple-500/40 text-purple-400 text-[11px] font-bold uppercase tracking-widest hover:bg-purple-500/10 transition-all active:scale-95"
+                  >
+                    <Plus size={14} /> Ajouter un créneau
+                  </button>
+                </>
+              ) : (
+                <div className="mb-3 space-y-2 text-left">
+                  <label className="text-[10px] font-bold uppercase text-gray-500 tracking-widest px-1">Heures à ajouter</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={simQuickHours}
+                    onChange={e => setSimQuickHours(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-[#0a0a0a] border border-white/10 rounded-xl px-4 py-3 text-lg font-bold focus:border-purple-500 outline-none"
+                  />
+                  <p className="text-[10px] text-purple-400/60 italic">Calculé au taux horaire de base ({stats.hourlyRate}€/h), sans majoration nuit (heures non précisées)</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2 lg:gap-3">
                 <div className="bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border border-purple-500/20 text-left">
                   <p className="text-[9px] lg:text-[10px] font-black text-purple-400/80 uppercase mb-1">Impact {showNet ? 'Net' : 'Brut'}</p>
                   <p className="text-base lg:text-xl font-black text-white">+{(showNet ? simNet : simBrut).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</p>
-                  <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">{fmt(simTotalH)} • {simSlots.length} créneau{simSlots.length > 1 ? 'x' : ''}</p>
+                  <p className="text-[9px] font-bold text-gray-500 uppercase mt-1">{fmt(simTotalH)}{simInputMode === 'slots' ? ` • ${simSlots.length} créneau${simSlots.length > 1 ? 'x' : ''}` : ''}</p>
                 </div>
                 <div className={`bg-[#0a0a0a]/50 rounded-2xl p-3 lg:p-4 border text-left ${showNet ? 'border-green-500/20' : 'border-blue-500/20'}`}>
                   <p className={`text-[9px] lg:text-[10px] font-black uppercase mb-1 ${showNet ? 'text-green-400/80' : 'text-blue-400/80'}`}>Total {showNet ? 'Net' : 'Brut'} Projeté</p>
