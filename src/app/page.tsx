@@ -181,7 +181,8 @@ export default function LingoDashboard() {
     complementaryHours: 0, complementaryBonus: 0, complementaryRate: 10,
     socialChargesRate: 21.9, fixedDeductions: 0, taxRate: 0, targetNet: 0,
     rawShifts: [] as NightShift[],
-    annualLeave: 25, leaveTaken: 0, leaveRemaining: 25
+    annualLeave: 25, leaveTaken: 0, leaveRemaining: 25,
+    leaveHoursMonth: 0, leaveBonusMonth: 0
   });
 
   // ─────────────────────────────────────────────────────────────
@@ -258,7 +259,7 @@ export default function LingoDashboard() {
     let rate = 0, hours = 0, shifts: NightShift[] = [];
     let charges = 21.9, fixed = 0, tax = 0, target = 0;
     let totalH = 0, totalHFinancial = 0, totalNightH = 0, totalBonus = 0;
-    let totalHolidayH = 0, totalHolidayBonus = 0;
+    let totalHolidayH = 0, totalHolidayBonus = 0, leaveHoursMonth = 0;
     let name = user.email?.split('@')[0] || "Utilisateur";
     let annualLeave = 25, leaveTaken = 0, leaveDayValue = 7, holidayRate = 100, complementaryRate = 10;
     let restDays: number[] = [0, 6];
@@ -280,7 +281,7 @@ export default function LingoDashboard() {
       const isSel = d.getMonth() === selMonth && d.getFullYear() === selYear;
       if (entry.absenceType === 'cp') {
         leaveTaken++;
-        if (isSel && !restDays.includes(d.getDay())) totalHFinancial += leaveDayValue;
+        if (isSel && !restDays.includes(d.getDay())) { totalHFinancial += leaveDayValue; leaveHoursMonth += leaveDayValue; }
       }
       if (isSel && !entry.absenceType) {
         entry.sessions?.forEach(s => {
@@ -315,7 +316,8 @@ export default function LingoDashboard() {
       holidayHours: totalHolidayH, holidayBonus: totalHolidayBonus, holidayRate,
       complementaryHours: compH, complementaryBonus: compBonus, complementaryRate,
       socialChargesRate: charges, fixedDeductions: fixed, taxRate: tax, targetNet: target,
-      rawShifts: shifts, annualLeave, leaveTaken, leaveRemaining: annualLeave - leaveTaken
+      rawShifts: shifts, annualLeave, leaveTaken, leaveRemaining: annualLeave - leaveTaken,
+      leaveHoursMonth, leaveBonusMonth: leaveHoursMonth * rate
     });
   }, [currentDate, historyRange, user, cloudSettings, cloudPlanning]);
 
@@ -357,6 +359,7 @@ export default function LingoDashboard() {
   const simProjectedBrut = currentTotalBrut + simBrut;
   const simProjectedNet = toNet(simProjectedBrut);
   const simNet = simProjectedNet - currentTotalNet;
+  const leaveNetMonth = toNet(currentTotalBrut) - toNet(currentTotalBrut - stats.leaveBonusMonth);
   const isContractMet = stats.totalHoursMonth >= stats.contractHours;
   const hasTarget = stats.targetNet > 0;
   const financialTarget = hasTarget ? stats.targetNet : baseNet;
@@ -487,6 +490,11 @@ export default function LingoDashboard() {
             <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }} />
           </div>
           <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} / {stats.annualLeave} pris</p>
+          {stats.leaveHoursMonth > 0 && (
+            <p className="text-[10px] text-orange-400 mt-2 font-bold">
+              {fmt(stats.leaveHoursMonth)} payées ce mois → {(showNet ? leaveNetMonth : stats.leaveBonusMonth).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+            </p>
+          )}
         </div>
       )
     },
@@ -680,6 +688,11 @@ export default function LingoDashboard() {
                 <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }} />
               </div>
               <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} / {stats.annualLeave} pris</p>
+              {stats.leaveHoursMonth > 0 && (
+                <p className="text-[10px] text-orange-400 mt-2 font-bold">
+                  {fmt(stats.leaveHoursMonth)} payées ce mois → {(showNet ? leaveNetMonth : stats.leaveBonusMonth).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                </p>
+              )}
             </div>
           </div>
 
