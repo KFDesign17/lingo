@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus,
   Clock, Coffee, X, Save, Trash2, Umbrella, Heart, AlertCircle, XCircle, Gift
@@ -24,11 +25,13 @@ const absenceLabels = {
 };
 
 export default function PlanningPage() {
+  const router = useRouter();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [mealAllowance, setMealAllowance] = useState(0);
   const [holidayRate, setHolidayRate] = useState(100);
+  const [userId, setUserId] = useState<string | null>(null);
   const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [dayType, setDayType] = useState<'work' | 'cp' | 'sick' | 'recovery' | 'unpaid'>('work');
@@ -36,54 +39,46 @@ export default function PlanningPage() {
   const [tempSessions, setTempSessions] = useState<WorkSession[]>([]);
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem('lingo_settings');
-    const savedPlanning = localStorage.getItem('lingo_planning');
-    if (savedSettings) {
-      const parsed = JSON.parse(savedSettings);
-      setMealAllowance(parsed.mealAllowance || 0);
-      setHolidayRate(parsed.holidayRate || 100);
-    }
-    if (savedPlanning) {
-      try {
-        const parsed: any[] = JSON.parse(savedPlanning);
-        setWorkEntries(parsed.filter(e => e && (Array.isArray(e.sessions) || e.absenceType)));
-      } catch (e) { console.error("Erreur formatage données", e); }
-    }
-    setIsInitialLoadDone(true);
-  }, []);
+    const load = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { router.push('/'); return; }
+      setUserId(session.user.id);
+      const { data, error } = await supabase
+        .from('user_profiles').select('settings_data, planning_data').eq('id', session.user.id).single();
+      if (!error && data) {
+        if (data.settings_data) {
+          setMealAllowance(data.settings_data.mealAllowance || 0);
+          setHolidayRate(data.settings_data.holidayRate || 100);
+        }
+        if (Array.isArray(data.planning_data)) {
+          setWorkEntries(data.planning_data.filter((e: any) => e && (Array.isArray(e.sessions) || e.absenceType)));
+        }
+      }
+      setIsInitialLoadDone(true);
+    };
+    load();
+  }, [router]);
 
   // ─────────────────────────────────────────────────────────────
-  // SAUVEGARDE LOCALE + CLOUD à chaque modification du planning
-  // Le timestamp permet à la sync du dashboard de savoir
-  // que le local est plus récent que le cloud.
+  // SAUVEGARDE CLOUD à chaque modification du planning
   // ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isInitialLoadDone) return;
+    if (!isInitialLoadDone || !userId) return;
 
     const now = new Date().toISOString();
-    localStorage.setItem('lingo_planning', JSON.stringify(workEntries));
-    localStorage.setItem('lingo_updated_at', now);
-
-    // Push cloud silencieux
     const pushCloud = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const localSettings = JSON.parse(localStorage.getItem('lingo_settings') || 'null');
-          await supabase.from('user_profiles').upsert({
-            id: session.user.id,
-            planning_data: workEntries,
-            settings_data: localSettings,
-            updated_at: now,
-          });
-        }
+        await supabase.from('user_profiles').upsert({
+          id: userId,
+          planning_data: workEntries,
+          updated_at: now,
+        });
       } catch (err) {
         console.error('Erreur sync planning cloud:', err);
-        // Pas grave — sera sync au prochain login
       }
     };
     pushCloud();
-  }, [workEntries, isInitialLoadDone]);
+  }, [workEntries, isInitialLoadDone, userId]);
 
   const { days, startOffset, month, year } = getDaysInMonth(currentDate);
   const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -137,6 +132,14 @@ export default function PlanningPage() {
   const holidayDaysCount = entriesThisMonth.filter(e => e.isHoliday && !e.absenceType).length;
   const cpCount = workEntries.filter(e => e.absenceType === 'cp').length;
   const sickCount = entriesThisMonth.filter(e => e.absenceType === 'sick').length;
+
+  if (!isInitialLoadDone) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-white font-sans flex items-center justify-center">
+        <p className="text-sm text-gray-500">Chargement…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">

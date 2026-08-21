@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Clock, ShieldCheck, Plus, Trash2, FileText, Wallet, Umbrella, Gift, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/utils/supabase';
 
@@ -19,6 +20,7 @@ interface UserSettings {
   targetNet: number;
   annualLeave: number;
   leaveDayValue: number;
+  restDays: number[];
   holidayRate: number;
   nightShifts: NightShift[];
 }
@@ -36,6 +38,7 @@ export default function SettingsPage() {
     targetNet: 0,
     annualLeave: 25,
     leaveDayValue: 7,
+    restDays: [0, 6],
     holidayRate: 100,
     nightShifts: [
       { id: '1', start: "21:00", end: "00:00", rate: 10 },
@@ -43,52 +46,51 @@ export default function SettingsPage() {
     ]
   };
 
+  const router = useRouter();
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
   const [showSynthesis, setShowSynthesis] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('lingo_settings');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
+    const load = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { router.push('/'); return; }
+      setUserId(session.user.id);
+      const { data, error } = await supabase
+        .from('user_profiles').select('settings_data').eq('id', session.user.id).single();
+      if (!error && data?.settings_data) {
+        const parsed = data.settings_data;
         setSettings({
           ...defaultSettings, ...parsed,
           nightShifts: Array.isArray(parsed.nightShifts) ? parsed.nightShifts : defaultSettings.nightShifts,
           annualLeave: parsed.annualLeave || 25,
           leaveDayValue: parsed.leaveDayValue || 7,
+          restDays: Array.isArray(parsed.restDays) ? parsed.restDays : [0, 6],
           holidayRate: parsed.holidayRate || 100
         });
-      } catch (e) { console.error("Erreur lecture stockage", e); }
-    }
-  }, []);
+      }
+      setIsLoading(false);
+    };
+    load();
+  }, [router]);
 
   const handleSave = async () => {
+    if (!userId) return;
     const now = new Date().toISOString();
-
-    // 1. Sauvegarde locale immédiate avec timestamp
-    localStorage.setItem('lingo_settings', JSON.stringify(settings));
-    localStorage.setItem('lingo_updated_at', now);
-
-    // 2. Push cloud en arrière-plan (sans bloquer l'UI)
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const localPlanning = JSON.parse(localStorage.getItem('lingo_planning') || '[]');
-        await supabase.from('user_profiles').upsert({
-          id: session.user.id,
-          settings_data: settings,
-          planning_data: localPlanning,
-          updated_at: now,
-        });
-      }
+      await supabase.from('user_profiles').upsert({
+        id: userId,
+        settings_data: settings,
+        updated_at: now,
+      });
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2000);
     } catch (error) {
       console.error("Erreur synchro cloud:", error);
-      // Pas grave : le local est sauvegardé, la sync se fera au prochain chargement
+      alert("Erreur de sauvegarde en ligne, vérifie ta connexion.");
     }
-
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
   };
 
   const addNightShift = () => {
@@ -106,6 +108,14 @@ export default function SettingsPage() {
   const baseBrut = settings.hourlyRate * settings.contractHours;
   const netAvantImpot = (baseBrut * (1 - settings.socialChargesRate / 100)) - settings.fixedDeductions;
   const netAPayer = netAvantImpot * (1 - settings.taxRate / 100);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-white font-sans flex items-center justify-center">
+        <p className="text-sm text-gray-500">Chargement…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
@@ -160,6 +170,29 @@ export default function SettingsPage() {
             </div>
             <div className="p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl">
               <p className="text-[10px] text-orange-400/70 italic">💡 Heures payées par jour de CP posé</p>
+            </div>
+            <div className="space-y-2 text-left">
+              <label className="text-[10px] uppercase font-bold text-gray-600 ml-1 tracking-wider">Jours de repos habituels</label>
+              <div className="grid grid-cols-7 gap-1">
+                {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((label, idx) => {
+                  const dow = (idx + 1) % 7; // idx0=Lundi(1) ... idx6=Dimanche(0), getDay() convention
+                  const active = settings.restDays.includes(dow);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        const next = active ? settings.restDays.filter(d => d !== dow) : [...settings.restDays, dow];
+                        setSettings({ ...settings, restDays: next });
+                      }}
+                      className={`py-2 rounded-lg text-xs font-bold transition-all active:scale-95 ${active ? 'bg-orange-500 text-white' : 'bg-[#1a1a1a] text-gray-500 border border-white/5'}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-gray-500 italic pt-1">Les CP posés sur ces jours ne comptent pas dans le calcul des heures payées (comme chez l'employeur)</p>
             </div>
           </div>
         </div>

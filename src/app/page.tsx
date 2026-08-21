@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   LayoutDashboard, Calendar, Settings, Wallet, Clock, TrendingUp, Moon,
@@ -139,8 +139,8 @@ export default function LingoDashboard() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
-  const syncDoneRef = useRef(false);
-  const [dataReady, setDataReady] = useState(false);
+  const [cloudSettings, setCloudSettings] = useState<any>(null);
+  const [cloudPlanning, setCloudPlanning] = useState<WorkEntry[]>([]);
 
   // --- GUIDE ---
   const GUIDE_KEY = 'lingo_guide_seen';
@@ -185,56 +185,28 @@ export default function LingoDashboard() {
   });
 
   // ─────────────────────────────────────────────────────────────
-  // SYNC SILENCIEUSE
+  // CHARGEMENT DEPUIS LE CLOUD (source unique de vérité)
   // ─────────────────────────────────────────────────────────────
-  const syncInBackground = async (userId: string) => {
+  const loadCloudData = async (userId: string) => {
     if (!navigator.onLine) { setIsOffline(true); return; }
     setIsOffline(false);
     setIsSyncing(true);
     try {
-      const localTs = localStorage.getItem('lingo_updated_at');
-      const localTimestamp = localTs ? new Date(localTs).getTime() : 0;
-      const localPlanning = localStorage.getItem('lingo_planning');
-      const localSettings = localStorage.getItem('lingo_settings');
-      const { data: cloudData, error } = await supabase
+      const { data, error } = await supabase
         .from('user_profiles').select('*').eq('id', userId).single();
-      const cloudTimestamp = cloudData?.updated_at ? new Date(cloudData.updated_at).getTime() : 0;
-      if (!cloudData || error) {
-        if (localPlanning || localSettings) await pushToCloud(userId, localPlanning, localSettings);
-      } else if (localTimestamp > cloudTimestamp) {
-        await pushToCloud(userId, localPlanning, localSettings);
-      } else if (cloudTimestamp > localTimestamp) {
-        pullFromCloud(cloudData); setDataReady(prev => !prev);
-      } else if (cloudData.planning_data || cloudData.settings_data) {
-        pullFromCloud(cloudData); setDataReady(prev => !prev);
+      if (!error && data) {
+        setCloudSettings(data.settings_data || null);
+        setCloudPlanning(Array.isArray(data.planning_data) ? data.planning_data : []);
       }
     } catch (err) {
-      console.error('Erreur sync background :', err);
+      console.error('Erreur chargement cloud :', err);
     } finally {
       setIsSyncing(false);
-      syncDoneRef.current = true;
     }
   };
 
-  const pushToCloud = async (userId: string, planning: string | null, settings: string | null) => {
-    const now = new Date().toISOString();
-    await supabase.from('user_profiles').upsert({
-      id: userId,
-      planning_data: planning ? JSON.parse(planning) : [],
-      settings_data: settings ? JSON.parse(settings) : null,
-      updated_at: now,
-    });
-    localStorage.setItem('lingo_updated_at', now);
-  };
-
-  const pullFromCloud = (cloudData: any) => {
-    if (cloudData.planning_data) localStorage.setItem('lingo_planning', JSON.stringify(cloudData.planning_data));
-    if (cloudData.settings_data) localStorage.setItem('lingo_settings', JSON.stringify(cloudData.settings_data));
-    if (cloudData.updated_at) localStorage.setItem('lingo_updated_at', cloudData.updated_at);
-  };
-
   useEffect(() => {
-    const handleOnline = () => { setIsOffline(false); if (user) syncInBackground(user.id); };
+    const handleOnline = () => { setIsOffline(false); if (user) loadCloudData(user.id); };
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -250,13 +222,13 @@ export default function LingoDashboard() {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       setAuthLoading(false);
-      if (currentUser && !syncDoneRef.current) syncInBackground(currentUser.id);
+      if (currentUser) loadCloudData(currentUser.id);
     };
     initSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      if (currentUser && !syncDoneRef.current) syncInBackground(currentUser.id);
+      if (currentUser) loadCloudData(currentUser.id);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -283,58 +255,57 @@ export default function LingoDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    const savedSettings = localStorage.getItem('lingo_settings');
-    const savedPlanning = localStorage.getItem('lingo_planning');
     let rate = 0, hours = 0, shifts: NightShift[] = [];
     let charges = 21.9, fixed = 0, tax = 0, target = 0;
     let totalH = 0, totalHFinancial = 0, totalNightH = 0, totalBonus = 0;
     let totalHolidayH = 0, totalHolidayBonus = 0;
     let name = user.email?.split('@')[0] || "Utilisateur";
     let annualLeave = 25, leaveTaken = 0, leaveDayValue = 7, holidayRate = 100, complementaryRate = 10;
-    if (savedSettings) {
-      const p = JSON.parse(savedSettings);
+    let restDays: number[] = [0, 6];
+    if (cloudSettings) {
+      const p = cloudSettings;
       rate = p.hourlyRate || 0; hours = p.contractHours || 0;
       shifts = p.nightShifts || []; charges = p.socialChargesRate ?? 21.9;
       fixed = p.fixedDeductions || 0; tax = p.taxRate || 0; target = p.targetNet || 0;
       if (p.userName) name = p.userName;
       annualLeave = p.annualLeave || 25; leaveDayValue = p.leaveDayValue || 7; holidayRate = p.holidayRate || 100;
       complementaryRate = p.complementaryRate ?? 10;
+      restDays = Array.isArray(p.restDays) ? p.restDays : [0, 6];
     }
     setUserName(name);
-    if (savedPlanning) {
-      try {
-        const entries: WorkEntry[] = JSON.parse(savedPlanning);
-        const selMonth = currentDate.getMonth(), selYear = currentDate.getFullYear();
-        entries.forEach(entry => {
-          const d = new Date(entry.date);
-          const isSel = d.getMonth() === selMonth && d.getFullYear() === selYear;
-          if (entry.absenceType === 'cp') { leaveTaken++; if (isSel) totalHFinancial += leaveDayValue; }
-          if (isSel && !entry.absenceType) {
-            entry.sessions?.forEach(s => {
-              const res = calcSession(s.start, s.end, rate, shifts, entry.isHoliday || false, holidayRate);
-              totalH += res.h; totalHFinancial += res.h; totalNightH += res.nH; totalBonus += res.b;
-              if (entry.isHoliday) { totalHolidayH += res.h; totalHolidayBonus += res.hB; }
-            });
-          }
+    const entries: WorkEntry[] = cloudPlanning || [];
+    const selMonth = currentDate.getMonth(), selYear = currentDate.getFullYear();
+    entries.forEach(entry => {
+      const d = new Date(entry.date);
+      const isSel = d.getMonth() === selMonth && d.getFullYear() === selYear;
+      if (entry.absenceType === 'cp') {
+        leaveTaken++;
+        if (isSel && !restDays.includes(d.getDay())) totalHFinancial += leaveDayValue;
+      }
+      if (isSel && !entry.absenceType) {
+        entry.sessions?.forEach(s => {
+          const res = calcSession(s.start, s.end, rate, shifts, entry.isHoliday || false, holidayRate);
+          totalH += res.h; totalHFinancial += res.h; totalNightH += res.nH; totalBonus += res.b;
+          if (entry.isHoliday) { totalHolidayH += res.h; totalHolidayBonus += res.hB; }
         });
-        const tempGraph: MonthHistory[] = [];
-        for (let i = historyRange; i >= 0; i--) {
-          const td = new Date(currentDate.getFullYear(), currentDate.getMonth() - i);
-          let mH = 0, mB = 0, mHB = 0;
-          entries.forEach(entry => {
-            const d = new Date(entry.date);
-            if (d.getMonth() === td.getMonth() && d.getFullYear() === td.getFullYear()) {
-              if (entry.absenceType === 'cp') { mH += leaveDayValue; }
-              else { entry.sessions?.forEach(s => { const r = calcSession(s.start, s.end, rate, shifts, entry.isHoliday || false, holidayRate); mH += r.h; mB += r.b; mHB += r.hB; }); }
-            }
-          });
-          const mBrut = (mH * rate) + mB + mHB;
-          const mNet = Math.max(0, (mBrut - mBrut * (charges / 100) - fixed) * (1 - tax / 100));
-          tempGraph.push({ label: td.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', ''), net: mNet, isCurrent: i === 0 });
+      }
+    });
+    const tempGraph: MonthHistory[] = [];
+    for (let i = historyRange; i >= 0; i--) {
+      const td = new Date(currentDate.getFullYear(), currentDate.getMonth() - i);
+      let mH = 0, mB = 0, mHB = 0;
+      entries.forEach(entry => {
+        const d = new Date(entry.date);
+        if (d.getMonth() === td.getMonth() && d.getFullYear() === td.getFullYear()) {
+          if (entry.absenceType === 'cp') { if (!restDays.includes(d.getDay())) mH += leaveDayValue; }
+          else { entry.sessions?.forEach(s => { const r = calcSession(s.start, s.end, rate, shifts, entry.isHoliday || false, holidayRate); mH += r.h; mB += r.b; mHB += r.hB; }); }
         }
-        setGraphData(tempGraph);
-      } catch (e) { console.error(e); }
+      });
+      const mBrut = (mH * rate) + mB + mHB;
+      const mNet = Math.max(0, (mBrut - mBrut * (charges / 100) - fixed) * (1 - tax / 100));
+      tempGraph.push({ label: td.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', ''), net: mNet, isCurrent: i === 0 });
     }
+    setGraphData(tempGraph);
     const compH = Math.max(0, totalH - hours);
     const compBonus = compH * rate * (complementaryRate / 100);
     setStats({
@@ -346,7 +317,7 @@ export default function LingoDashboard() {
       socialChargesRate: charges, fixedDeductions: fixed, taxRate: tax, targetNet: target,
       rawShifts: shifts, annualLeave, leaveTaken, leaveRemaining: annualLeave - leaveTaken
     });
-  }, [currentDate, historyRange, user, dataReady]);
+  }, [currentDate, historyRange, user, cloudSettings, cloudPlanning]);
 
   function calcSession(startStr: string, endStr: string, rate: number, shifts: NightShift[], isHoliday: boolean, holidayRate: number) {
     const [hS, mS] = startStr.split(':').map(Number);
