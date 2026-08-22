@@ -18,7 +18,9 @@ interface UserSettings {
   fixedDeductions: number;
   taxRate: number;
   targetNet: number;
-  annualLeave: number;
+  hireDate: string;
+  leaveAccrualRate: number;
+  leaveTakenOffset: number;
   leaveDayValue: number;
   restDays: number[];
   holidayRate: number;
@@ -36,7 +38,9 @@ export default function SettingsPage() {
     fixedDeductions: 0,
     taxRate: 0,
     targetNet: 0,
-    annualLeave: 25,
+    hireDate: "",
+    leaveAccrualRate: 2.5,
+    leaveTakenOffset: 0,
     leaveDayValue: 7,
     restDays: [0, 6],
     holidayRate: 100,
@@ -65,7 +69,9 @@ export default function SettingsPage() {
         setSettings({
           ...defaultSettings, ...parsed,
           nightShifts: Array.isArray(parsed.nightShifts) ? parsed.nightShifts : defaultSettings.nightShifts,
-          annualLeave: parsed.annualLeave || 25,
+          hireDate: parsed.hireDate || "",
+          leaveAccrualRate: parsed.leaveAccrualRate || 2.5,
+          leaveTakenOffset: parsed.leaveTakenOffset || 0,
           leaveDayValue: parsed.leaveDayValue || 7,
           restDays: Array.isArray(parsed.restDays) ? parsed.restDays : [0, 6],
           holidayRate: parsed.holidayRate || 100
@@ -165,12 +171,17 @@ export default function SettingsPage() {
           </h2>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <InputGroup label="Jours annuels" value={settings.annualLeave} type="number" onChange={v => setSettings({ ...settings, annualLeave: parseInt(v) || 0 })} />
-              <InputGroup label="Heures / jour" value={settings.leaveDayValue} type="number" onChange={v => setSettings({ ...settings, leaveDayValue: parseFloat(v) || 0 })} />
+              <InputGroup label="Date d'embauche" value={settings.hireDate} type="date" onChange={v => setSettings({ ...settings, hireDate: v })} />
+              <InputGroup label="Jours acquis / mois" value={settings.leaveAccrualRate} type="number" onChange={v => setSettings({ ...settings, leaveAccrualRate: parseFloat(v) || 0 })} />
             </div>
             <div className="p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl">
-              <p className="text-[10px] text-orange-400/70 italic">💡 Heures payées par jour de CP posé</p>
+              <p className="text-[10px] text-orange-400/70 italic">💡 Tes CP s'accumulent automatiquement depuis ta date d'embauche (2,5j/mois par défaut, comme sur ta fiche de paie)</p>
             </div>
+            <InputGroup label="CP déjà pris avant l'app" value={settings.leaveTakenOffset} type="number" onChange={v => setSettings({ ...settings, leaveTakenOffset: parseFloat(v) || 0 })} />
+            <div className="p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl">
+              <p className="text-[10px] text-orange-400/70 italic">💡 Si tu as déjà posé des CP avant d'utiliser l'app (non enregistrés dans le planning), indique le nombre de jours ici pour que ton solde reste juste</p>
+            </div>
+            <InputGroup label="Heures / jour" value={settings.leaveDayValue} type="number" onChange={v => setSettings({ ...settings, leaveDayValue: parseFloat(v) || 0 })} />
             <div className="space-y-2 text-left">
               <label className="text-[10px] uppercase font-bold text-gray-600 ml-1 tracking-wider">Jours de repos habituels</label>
               <div className="grid grid-cols-7 gap-1">
@@ -284,10 +295,10 @@ export default function SettingsPage() {
               <div className="flex justify-between items-center pb-4 border-b border-white/5">
                 <div className="flex items-center gap-2">
                   <Umbrella size={16} className="text-orange-400" />
-                  <span className="text-gray-400 text-sm">CP annuels</span>
+                  <span className="text-gray-400 text-sm">CP acquis</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-lg font-bold text-orange-400 block">{settings.annualLeave}j</span>
+                  <span className="text-lg font-bold text-orange-400 block">{settings.leaveAccrualRate}j/mois</span>
                   <span className="text-[10px] text-gray-500 uppercase font-bold">({settings.leaveDayValue}h/j)</span>
                 </div>
               </div>

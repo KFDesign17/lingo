@@ -183,7 +183,7 @@ export default function LingoDashboard() {
     complementaryHours: 0, complementaryBonus: 0, complementaryRate: 10,
     socialChargesRate: 21.9, fixedDeductions: 0, taxRate: 0, targetNet: 0,
     rawShifts: [] as NightShift[],
-    annualLeave: 25, leaveTaken: 0, leaveRemaining: 25,
+    leaveAccrued: 0, leaveTaken: 0, leaveRemaining: 0,
     leaveHoursMonth: 0, leaveBonusMonth: 0
   });
 
@@ -263,7 +263,8 @@ export default function LingoDashboard() {
     let totalH = 0, totalHFinancial = 0, totalNightH = 0, totalBonus = 0;
     let totalHolidayH = 0, totalHolidayBonus = 0, leaveHoursMonth = 0;
     let name = user.email?.split('@')[0] || "Utilisateur";
-    let annualLeave = 25, leaveTaken = 0, leaveDayValue = 7, holidayRate = 100, complementaryRate = 10;
+    let leaveDayValue = 7, holidayRate = 100, complementaryRate = 10;
+    let hireDate = '', leaveAccrualRate = 2.5, leaveTakenOffset = 0;
     let restDays: number[] = [0, 6];
     if (cloudSettings) {
       const p = cloudSettings;
@@ -271,11 +272,14 @@ export default function LingoDashboard() {
       shifts = p.nightShifts || []; charges = p.socialChargesRate ?? 21.9;
       fixed = p.fixedDeductions || 0; tax = p.taxRate || 0; target = p.targetNet || 0;
       if (p.userName) name = p.userName;
-      annualLeave = p.annualLeave || 25; leaveDayValue = p.leaveDayValue || 7; holidayRate = p.holidayRate || 100;
+      leaveDayValue = p.leaveDayValue || 7; holidayRate = p.holidayRate || 100;
       complementaryRate = p.complementaryRate ?? 10;
+      hireDate = p.hireDate || ''; leaveAccrualRate = p.leaveAccrualRate || 2.5;
+      leaveTakenOffset = p.leaveTakenOffset || 0;
       restDays = Array.isArray(p.restDays) ? p.restDays : [0, 6];
     }
     setUserName(name);
+    let leaveTaken = leaveTakenOffset;
     const entries: WorkEntry[] = cloudPlanning || [];
     const selMonth = currentDate.getMonth(), selYear = currentDate.getFullYear();
     entries.forEach(entry => {
@@ -311,6 +315,7 @@ export default function LingoDashboard() {
     setGraphData(tempGraph);
     const compH = Math.max(0, totalH - hours);
     const compBonus = compH * rate * (complementaryRate / 100);
+    const leaveAccrued = computeLeaveAccrued(hireDate, leaveAccrualRate, new Date());
     setStats({
       hourlyRate: rate, contractHours: hours, baseSalary: rate * hours,
       totalHoursMonth: totalH, totalHoursFinancial: totalHFinancial,
@@ -318,10 +323,19 @@ export default function LingoDashboard() {
       holidayHours: totalHolidayH, holidayBonus: totalHolidayBonus, holidayRate,
       complementaryHours: compH, complementaryBonus: compBonus, complementaryRate,
       socialChargesRate: charges, fixedDeductions: fixed, taxRate: tax, targetNet: target,
-      rawShifts: shifts, annualLeave, leaveTaken, leaveRemaining: annualLeave - leaveTaken,
+      rawShifts: shifts, leaveAccrued, leaveTaken, leaveRemaining: leaveAccrued - leaveTaken,
       leaveHoursMonth, leaveBonusMonth: leaveHoursMonth * rate
     });
   }, [currentDate, historyRange, user, cloudSettings, cloudPlanning]);
+
+  function computeLeaveAccrued(hireDateStr: string, ratePerMonth: number, asOf: Date) {
+    if (!hireDateStr) return 0;
+    const hire = new Date(hireDateStr + 'T00:00:00');
+    const diffDays = (asOf.getTime() - hire.getTime()) / 86400000;
+    if (diffDays <= 0) return 0;
+    const months = diffDays / 30.4368;
+    return Math.round(months * ratePerMonth * 100) / 100;
+  }
 
   function calcSession(startStr: string, endStr: string, rate: number, shifts: NightShift[], isHoliday: boolean, holidayRate: number) {
     const [hS, mS] = startStr.split(':').map(Number);
@@ -371,7 +385,7 @@ export default function LingoDashboard() {
   const shouldSplitBar = hasTarget || isContractMet;
   const monthYearLabel = currentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
   const maxNetInGraph = Math.max(...graphData.map(d => d.net), 1);
-  const leaveProgress = (stats.leaveTaken / stats.annualLeave) * 100;
+  const leaveProgress = stats.leaveAccrued > 0 ? Math.min((stats.leaveTaken / stats.leaveAccrued) * 100, 100) : 0;
 
   // LOADING
   if (authLoading) {
@@ -487,11 +501,11 @@ export default function LingoDashboard() {
             </div>
           </div>
           <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Congés Payés</p>
-          <h4 className="text-xl font-bold">{stats.leaveRemaining} jours</h4>
+          <h4 className="text-xl font-bold">{stats.leaveRemaining.toFixed(1)} jours</h4>
           <div className="mt-3 bg-white/5 rounded-full h-2 overflow-hidden">
             <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }} />
           </div>
-          <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} / {stats.annualLeave} pris</p>
+          <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} pris / {stats.leaveAccrued.toFixed(1)} acquis</p>
           {stats.leaveHoursMonth > 0 && (
             <p className="text-[10px] text-orange-400 mt-2 font-bold">
               {fmt(stats.leaveHoursMonth)} payées ce mois → {(showNet ? leaveNetMonth : stats.leaveBonusMonth).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
@@ -709,11 +723,11 @@ export default function LingoDashboard() {
             <div className="border p-4 lg:p-5 rounded-2xl bg-[#111] border-white/10 text-left">
               <div className="mb-3 lg:mb-4"><div className="p-2 lg:p-3 bg-white/5 rounded-xl border border-white/5 w-fit"><Umbrella className="text-orange-400" size={18} /></div></div>
               <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Congés Payés</p>
-              <h4 className="text-xl lg:text-2xl font-bold">{stats.leaveRemaining} jours</h4>
+              <h4 className="text-xl lg:text-2xl font-bold">{stats.leaveRemaining.toFixed(1)} jours</h4>
               <div className="mt-3 bg-white/5 rounded-full h-2 overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500" style={{ width: `${leaveProgress}%` }} />
               </div>
-              <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} / {stats.annualLeave} pris</p>
+              <p className="text-[10px] text-gray-500 mt-2 italic">{stats.leaveTaken} pris / {stats.leaveAccrued.toFixed(1)} acquis</p>
               {stats.leaveHoursMonth > 0 && (
                 <p className="text-[10px] text-orange-400 mt-2 font-bold">
                   {fmt(stats.leaveHoursMonth)} payées ce mois → {(showNet ? leaveNetMonth : stats.leaveBonusMonth).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
