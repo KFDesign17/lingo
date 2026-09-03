@@ -10,6 +10,7 @@ import {
 import { supabase } from '@/utils/supabase';
 
 interface NightShift { id: string; start: string; end: string; rate: number; }
+interface RateEntry { rate: number; from: string; }
 interface WorkSession { id: string; start: string; end: string; }
 interface WorkEntry {
   date: string; sessions: WorkSession[];
@@ -184,7 +185,8 @@ export default function LingoDashboard() {
     socialChargesRate: 21.9, fixedDeductions: 0, taxRate: 0, targetNet: 0,
     rawShifts: [] as NightShift[],
     leaveAccrued: 0, leaveTaken: 0, leaveRemaining: 0,
-    leaveHoursMonth: 0, leaveBonusMonth: 0
+    leaveHoursMonth: 0, leaveBonusMonth: 0,
+    baseBrutFinancial: 0, baseBrutMonth: 0
   });
 
   // ─────────────────────────────────────────────────────────────
@@ -266,6 +268,7 @@ export default function LingoDashboard() {
     let leaveDayValue = 7, holidayRate = 100, complementaryRate = 10;
     let hireDate = '', leaveAccrualRate = 2.5, leaveTakenOffset = 0;
     let restDays: number[] = [0, 6];
+    let rateHistory: RateEntry[] = [];
     if (cloudSettings) {
       const p = cloudSettings;
       rate = p.hourlyRate || 0; hours = p.contractHours || 0;
@@ -277,22 +280,31 @@ export default function LingoDashboard() {
       hireDate = p.hireDate || ''; leaveAccrualRate = p.leaveAccrualRate || 2.5;
       leaveTakenOffset = p.leaveTakenOffset || 0;
       restDays = Array.isArray(p.restDays) ? p.restDays : [0, 6];
+      rateHistory = Array.isArray(p.rateHistory) ? p.rateHistory : [];
     }
     setUserName(name);
     let leaveTaken = leaveTakenOffset;
     const entries: WorkEntry[] = cloudPlanning || [];
     const selMonth = currentDate.getMonth(), selYear = currentDate.getFullYear();
+    let baseBrutFinancial = 0, baseBrutMonth = 0, leaveBrutMonth = 0;
     entries.forEach(entry => {
       const d = new Date(entry.date);
       const isSel = d.getMonth() === selMonth && d.getFullYear() === selYear;
       if (entry.absenceType === 'cp') {
         leaveTaken++;
-        if (isSel && !restDays.includes(d.getDay())) { totalHFinancial += leaveDayValue; leaveHoursMonth += leaveDayValue; }
+        if (isSel && !restDays.includes(d.getDay())) {
+          const entryRate = getRateAt(rateHistory, rate, d);
+          const brut = leaveDayValue * entryRate;
+          totalHFinancial += leaveDayValue; leaveHoursMonth += leaveDayValue;
+          baseBrutFinancial += brut; leaveBrutMonth += brut;
+        }
       }
       if (isSel && !entry.absenceType) {
+        const entryRate = getRateAt(rateHistory, rate, d);
         entry.sessions?.forEach(s => {
-          const res = calcSession(s.start, s.end, rate, shifts, entry.isHoliday || false, holidayRate);
+          const res = calcSession(s.start, s.end, entryRate, shifts, entry.isHoliday || false, holidayRate);
           totalH += res.h; totalHFinancial += res.h; totalNightH += res.nH; totalBonus += res.b;
+          baseBrutFinancial += res.h * entryRate; baseBrutMonth += res.h * entryRate;
           if (entry.isHoliday) { totalHolidayH += res.h; totalHolidayBonus += res.hB; }
         });
       }
@@ -300,31 +312,34 @@ export default function LingoDashboard() {
     const tempGraph: MonthHistory[] = [];
     for (let i = historyRange; i >= 0; i--) {
       const td = new Date(currentDate.getFullYear(), currentDate.getMonth() - i);
-      let mH = 0, mB = 0, mHB = 0;
+      let mBrutBase = 0, mB = 0, mHB = 0;
       entries.forEach(entry => {
         const d = new Date(entry.date);
         if (d.getMonth() === td.getMonth() && d.getFullYear() === td.getFullYear()) {
-          if (entry.absenceType === 'cp') { if (!restDays.includes(d.getDay())) mH += leaveDayValue; }
-          else { entry.sessions?.forEach(s => { const r = calcSession(s.start, s.end, rate, shifts, entry.isHoliday || false, holidayRate); mH += r.h; mB += r.b; mHB += r.hB; }); }
+          const entryRate = getRateAt(rateHistory, rate, d);
+          if (entry.absenceType === 'cp') { if (!restDays.includes(d.getDay())) mBrutBase += leaveDayValue * entryRate; }
+          else { entry.sessions?.forEach(s => { const r = calcSession(s.start, s.end, entryRate, shifts, entry.isHoliday || false, holidayRate); mBrutBase += r.h * entryRate; mB += r.b; mHB += r.hB; }); }
         }
       });
-      const mBrut = (mH * rate) + mB + mHB;
+      const mBrut = mBrutBase + mB + mHB;
       const mNet = Math.max(0, (mBrut - mBrut * (charges / 100) - fixed) * (1 - tax / 100));
       tempGraph.push({ label: td.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', ''), net: mNet, isCurrent: i === 0 });
     }
     setGraphData(tempGraph);
+    const monthRate = getRateAt(rateHistory, rate, new Date(selYear, selMonth, 1));
     const compH = Math.max(0, totalH - hours);
-    const compBonus = compH * rate * (complementaryRate / 100);
+    const compBonus = compH * monthRate * (complementaryRate / 100);
     const leaveAccrued = computeLeaveAccrued(hireDate, leaveAccrualRate, new Date());
     setStats({
-      hourlyRate: rate, contractHours: hours, baseSalary: rate * hours,
+      hourlyRate: rate, contractHours: hours, baseSalary: monthRate * hours,
       totalHoursMonth: totalH, totalHoursFinancial: totalHFinancial,
       nightHours: totalNightH, nightBonus: totalBonus,
       holidayHours: totalHolidayH, holidayBonus: totalHolidayBonus, holidayRate,
       complementaryHours: compH, complementaryBonus: compBonus, complementaryRate,
       socialChargesRate: charges, fixedDeductions: fixed, taxRate: tax, targetNet: target,
       rawShifts: shifts, leaveAccrued, leaveTaken, leaveRemaining: leaveAccrued - leaveTaken,
-      leaveHoursMonth, leaveBonusMonth: leaveHoursMonth * rate
+      leaveHoursMonth, leaveBonusMonth: leaveBrutMonth,
+      baseBrutFinancial, baseBrutMonth
     });
   }, [currentDate, historyRange, user, cloudSettings, cloudPlanning]);
 
@@ -335,6 +350,17 @@ export default function LingoDashboard() {
     if (diffDays <= 0) return 0;
     const months = diffDays / 30.4368;
     return Math.round(months * ratePerMonth * 100) / 100;
+  }
+
+  function getRateAt(history: RateEntry[], fallback: number, date: Date) {
+    if (!Array.isArray(history) || history.length === 0) return fallback;
+    const t = date.getTime();
+    let applicable = history[0].rate;
+    for (const entry of history) {
+      const et = new Date(entry.from + 'T00:00:00').getTime();
+      if (et <= t) applicable = entry.rate; else break;
+    }
+    return applicable;
   }
 
   function calcSession(startStr: string, endStr: string, rate: number, shifts: NightShift[], isHoliday: boolean, holidayRate: number) {
@@ -363,9 +389,9 @@ export default function LingoDashboard() {
     return `${h}h ${m.toString().padStart(2, '0')}min`;
   };
 
-  const currentTotalBrut = (stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus + stats.holidayBonus + stats.complementaryBonus;
+  const currentTotalBrut = stats.baseBrutFinancial + stats.nightBonus + stats.holidayBonus + stats.complementaryBonus;
   const currentTotalNet = toNet(currentTotalBrut);
-  const progressBrut = (stats.totalHoursMonth * stats.hourlyRate) + stats.nightBonus + stats.holidayBonus;
+  const progressBrut = stats.baseBrutMonth + stats.nightBonus + stats.holidayBonus;
   const progressNet = toNet(progressBrut);
   const baseNet = toNet(stats.baseSalary);
   const simResults = simSlots.map(slot => calcSession(slot.start, slot.end, stats.hourlyRate, stats.rawShifts, false, stats.holidayRate));
@@ -466,7 +492,7 @@ export default function LingoDashboard() {
           </div>
           <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Primes de Nuit</p>
           <h4 className="text-xl font-bold">
-            {(showNet ? toNet((stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus) - toNet(stats.totalHoursFinancial * stats.hourlyRate) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+            {(showNet ? toNet(stats.baseBrutFinancial + stats.nightBonus) - toNet(stats.baseBrutFinancial) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
           </h4>
           <p className="text-[10px] text-gray-500 mt-2 italic">{fmt(stats.nightHours)} majorées</p>
         </div>
@@ -717,7 +743,7 @@ export default function LingoDashboard() {
           {/* ── DESKTOP: grille 5 colonnes ── */}
           <div className="hidden lg:grid grid-cols-5 gap-4 mb-8">
             <StatCard title={showNet ? "Base Nette" : "Base Brute"} value={`${(showNet ? baseNet : stats.baseSalary).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Wallet className={showNet ? "text-green-400" : "text-blue-400"} />} label={showNet ? `Après ${stats.socialChargesRate}% charges` : "Salaire fixe"} onSwitch={() => setShowNet(!showNet)} isNet={showNet} />
-            <StatCard title="Primes de Nuit" value={`${(showNet ? toNet((stats.totalHoursFinancial * stats.hourlyRate) + stats.nightBonus) - toNet(stats.totalHoursFinancial * stats.hourlyRate) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Moon className="text-blue-400" />} label={`${fmt(stats.nightHours)} majorées`} />
+            <StatCard title="Primes de Nuit" value={`${(showNet ? toNet(stats.baseBrutFinancial + stats.nightBonus) - toNet(stats.baseBrutFinancial) : stats.nightBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Moon className="text-blue-400" />} label={`${fmt(stats.nightHours)} majorées`} />
             <StatCard title="Bonus Fériés" value={`${(showNet ? toNet(stats.holidayBonus) : stats.holidayBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<Gift className="text-pink-400" />} label={`${fmt(stats.holidayHours)} à +${stats.holidayRate}%`} />
             <StatCard title="Heures Complémentaires" value={`${(showNet ? toNet(stats.complementaryBonus) : stats.complementaryBonus).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`} icon={<TrendingUp className="text-cyan-400" />} label={`${fmt(stats.complementaryHours)} à +${stats.complementaryRate}%`} />
             <div className="border p-4 lg:p-5 rounded-2xl bg-[#111] border-white/10 text-left">

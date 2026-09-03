@@ -7,10 +7,12 @@ import { ArrowLeft, Save, Clock, ShieldCheck, Plus, Trash2, FileText, Wallet, Um
 import { supabase } from '@/utils/supabase';
 
 interface NightShift { id: string; start: string; end: string; rate: number; }
+interface RateEntry { rate: number; from: string; }
 
 interface UserSettings {
   userName: string;
   hourlyRate: number;
+  rateHistory: RateEntry[];
   contractHours: number;
   mealAllowance: number;
   complementaryRate: number;
@@ -31,6 +33,7 @@ export default function SettingsPage() {
   const defaultSettings: UserSettings = {
     userName: "Utilisateur",
     hourlyRate: 12.50,
+    rateHistory: [],
     contractHours: 151.67,
     mealAllowance: 0,
     complementaryRate: 10,
@@ -69,6 +72,7 @@ export default function SettingsPage() {
         setSettings({
           ...defaultSettings, ...parsed,
           nightShifts: Array.isArray(parsed.nightShifts) ? parsed.nightShifts : defaultSettings.nightShifts,
+          rateHistory: Array.isArray(parsed.rateHistory) ? parsed.rateHistory : [],
           hireDate: parsed.hireDate || "",
           leaveAccrualRate: parsed.leaveAccrualRate || 2.5,
           leaveTakenOffset: parsed.leaveTakenOffset || 0,
@@ -85,12 +89,22 @@ export default function SettingsPage() {
   const handleSave = async () => {
     if (!userId) return;
     const now = new Date().toISOString();
+    const today = now.slice(0, 10);
+    const rateHistory = Array.isArray(settings.rateHistory) ? [...settings.rateHistory] : [];
+    const lastEntry = rateHistory[rateHistory.length - 1];
+    if (!lastEntry) {
+      rateHistory.push({ rate: settings.hourlyRate, from: settings.hireDate || today });
+    } else if (lastEntry.rate !== settings.hourlyRate) {
+      rateHistory.push({ rate: settings.hourlyRate, from: today });
+    }
+    const toSave = { ...settings, rateHistory };
     try {
       await supabase.from('user_profiles').upsert({
         id: userId,
-        settings_data: settings,
+        settings_data: toSave,
         updated_at: now,
       });
+      setSettings(toSave);
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
     } catch (error) {
