@@ -175,6 +175,7 @@ export default function LingoDashboard() {
   const [historyRange, setHistoryRange] = useState(3);
   const [graphData, setGraphData] = useState<MonthHistory[]>([]);
   const [mobileActiveCard, setMobileActiveCard] = useState(0);
+  const [selectedGraphIdx, setSelectedGraphIdx] = useState<number | null>(null);
 
   const [stats, setStats] = useState({
     hourlyRate: 0, contractHours: 0, baseSalary: 0,
@@ -255,8 +256,8 @@ export default function LingoDashboard() {
   // ─────────────────────────────────────────────────────────────
   // CALCULS
   // ─────────────────────────────────────────────────────────────
-  const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
-  const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+  const prevMonth = () => { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)); setSelectedGraphIdx(null); };
+  const nextMonth = () => { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)); setSelectedGraphIdx(null); };
 
   useEffect(() => {
     if (!user) return;
@@ -837,7 +838,7 @@ export default function LingoDashboard() {
               </div>
               <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 gap-1 w-full sm:w-auto">
                 {[3, 6, 12].map(r => (
-                  <button key={r} onClick={() => setHistoryRange(r)} className={`flex-1 sm:flex-initial px-3 lg:px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${historyRange === r ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500'}`}>{r}M</button>
+                  <button key={r} onClick={() => { setHistoryRange(r); setSelectedGraphIdx(null); }} className={`flex-1 sm:flex-initial px-3 lg:px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${historyRange === r ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-gray-500'}`}>{r}M</button>
                 ))}
               </div>
             </div>
@@ -854,16 +855,21 @@ export default function LingoDashboard() {
                 {graphData.map((month, idx) => {
                   const height = (month.net / maxNetInGraph) * 100;
                   const isMax = month.net === maxNetInGraph && month.net > 0;
+                  const isSelected = selectedGraphIdx === idx;
                   return (
-                    <div key={idx} className="relative flex-1 flex flex-col items-center group h-full justify-end max-w-[40px] lg:max-w-none">
-                      <div className="absolute bottom-full mb-2 lg:mb-4 opacity-0 group-hover:opacity-100 transition-all duration-300 z-50 pointer-events-none">
+                    <div
+                      key={idx}
+                      className="relative flex-1 flex flex-col items-center group h-full justify-end max-w-[40px] lg:max-w-none cursor-pointer"
+                      onClick={() => setSelectedGraphIdx(isSelected ? null : idx)}
+                    >
+                      <div className={`absolute bottom-full mb-2 lg:mb-4 transition-all duration-300 z-50 pointer-events-none ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                         <div className="bg-white text-black text-[10px] lg:text-[11px] font-black py-1.5 lg:py-2 px-2 lg:px-3 rounded-xl shadow-2xl flex items-center gap-1 lg:gap-2 whitespace-nowrap">
                           {isMax && <Trophy size={10} className="text-amber-500" />}
                           {month.net.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
                         </div>
                         <div className="w-2 h-2 bg-white rotate-45 mx-auto -mt-1" />
                       </div>
-                      <div className={`w-6 lg:w-10 rounded-t-xl transition-all duration-700 ease-out ${month.isCurrent ? 'bg-gradient-to-t from-blue-600 to-blue-400' : isMax ? 'bg-gradient-to-t from-green-600 to-emerald-400' : 'bg-white/10'}`} style={{ height: `${height || 2}%` }} />
+                      <div className={`w-6 lg:w-10 rounded-t-xl transition-all duration-700 ease-out ${month.isCurrent ? 'bg-gradient-to-t from-blue-600 to-blue-400' : isMax ? 'bg-gradient-to-t from-green-600 to-emerald-400' : 'bg-white/10'} ${isSelected ? 'ring-2 ring-white/40' : ''}`} style={{ height: `${height || 2}%` }} />
                       <div className="absolute top-full mt-2 lg:mt-4">
                         <span className={`text-[9px] lg:text-[10px] font-black uppercase tracking-widest ${month.isCurrent ? 'text-blue-400' : 'text-gray-500'}`}>{month.label}</span>
                       </div>
